@@ -6,7 +6,6 @@ sample:
 tests:
   sample.net.wifi_prov_ble:
     platform_allow:
-      - esp32_devkitc/esp32/procpu
       - esp32s3_devkitc/esp32s3/procpu
     tags:
       - bluetooth

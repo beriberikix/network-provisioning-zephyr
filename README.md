@@ -83,8 +83,8 @@ Lifecycle events (`NETWORK_PROV_START`, `CRED_RECV`, `CRED_FAIL`, `CRED_SUCCESS`
 west init -m https://github.com/beriberikix/network-provisioning-zephyr wsp
 cd wsp && west update
 
-# Build & flash the sample (ESP32 has native Wi-Fi + BLE coexistence)
-west build -b esp32_devkitc/esp32/procpu \
+# Build & flash the sample (ESP32-S3 has native Wi-Fi + BLE coexistence)
+west build -b esp32s3_devkitc/esp32s3/procpu \
     network-provisioning-zephyr/samples/wifi_prov_ble
 west flash
 ```

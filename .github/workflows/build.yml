@@ -18,8 +18,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - board: esp32_devkitc/esp32/procpu
-            toolchain: xtensa-espressif_esp32_zephyr-elf
           - board: esp32s3_devkitc/esp32s3/procpu
             toolchain: xtensa-espressif_esp32s3_zephyr-elf
     steps:
