@@ -37,4 +37,10 @@ if(CONFIG_NETWORK_PROV_MGR)
     proto/network_config.proto
     proto/network_scan.proto
   )
+
+  # nanopb generates the .pb.h headers under <build>/proto (mirroring the
+  # proto/ source dir via RELPATH), but only the binary root is auto-added to
+  # the include path. Expose the generated headers so sources can include them
+  # by basename, e.g. #include "session.pb.h".
+  zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR}/proto)
 endif()
