@@ -2,6 +2,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# Public API headers are exposed unconditionally (absolute path) so the
+# application can include <network_provisioning/...> regardless of config or
+# module processing order.
+zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 if(CONFIG_NETWORK_PROV_MGR)
   zephyr_library_named(network_provisioning)
 
@@ -16,7 +21,6 @@ if(CONFIG_NETWORK_PROV_MGR)
     src/wifi_scan_handler.c
   )
 
-  zephyr_include_directories(include)
   zephyr_library_include_directories(src)
 
   # Compile the protobuf definitions with nanopb. The matching <name>.options
