@@ -27,7 +27,7 @@ Building and Running
 .. code-block:: console
 
    west build -b esp32_devkitc/esp32/procpu \
-       modules/lib/network_provisioning/samples/wifi_prov_ble
+       network-provisioning-zephyr/samples/wifi_prov_ble
    west flash
 
 Provision with the phone app

@@ -20,10 +20,10 @@ jobs:
           - board: esp32s3_devkitc/esp32s3/procpu
             toolchain: xtensa-espressif_esp32s3_zephyr-elf
     steps:
-      - name: Checkout (into the module's manifest path)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: modules/lib/network_provisioning
+          path: network-provisioning-zephyr
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -33,7 +33,7 @@ jobs:
       - name: Set up Zephyr workspace, SDK and toolchain
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
-          app-path: modules/lib/network_provisioning
+          app-path: network-provisioning-zephyr
           toolchains: ${{ matrix.toolchain }}
 
       - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
@@ -42,4 +42,4 @@ jobs:
       - name: Build wifi_prov_ble sample
         run: |
           west build -b ${{ matrix.board }} \
-            modules/lib/network_provisioning/samples/wifi_prov_ble
+            network-provisioning-zephyr/samples/wifi_prov_ble

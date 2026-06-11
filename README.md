@@ -85,7 +85,7 @@ cd wsp && west update
 
 # Build & flash the sample (ESP32 has native Wi-Fi + BLE coexistence)
 west build -b esp32_devkitc/esp32/procpu \
-    modules/lib/network_provisioning/samples/wifi_prov_ble
+    network-provisioning-zephyr/samples/wifi_prov_ble
 west flash
 ```
 

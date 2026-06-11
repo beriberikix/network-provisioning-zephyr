@@ -16,4 +16,4 @@ manifest:
       import: true
 
   self:
-    path: modules/lib/network_provisioning
+    path: network-provisioning-zephyr
