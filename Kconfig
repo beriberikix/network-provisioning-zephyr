@@ -12,8 +12,8 @@ menuconfig NETWORK_PROV_MGR
 	depends on WIFI && WIFI_CREDENTIALS
 	depends on MBEDTLS
 	depends on SETTINGS
+	depends on NANOPB
 	select EXPERIMENTAL
-	select NANOPB
 	help
 	  Espressif-compatible network provisioning service. Lets the stock ESP
 	  BLE Provisioning apps (Android/iOS) configure the device's Wi-Fi
