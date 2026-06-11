@@ -39,6 +39,9 @@ jobs:
           app-path: network-provisioning-zephyr
           toolchains: ${{ matrix.toolchain }}
 
+      - name: Install module Python dependencies (nanopb generator)
+        run: west packages pip --install
+
       - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
         run: west blobs fetch hal_espressif
 

@@ -2,7 +2,9 @@
 #   west init -m https://github.com/beriberikix/network-provisioning-zephyr
 #   west update
 #
-# Zephyr is imported with its own manifest, which brings in nanopb and mbedTLS.
+# Zephyr is imported with its own manifest. nanopb is NOT part of Zephyr's
+# default manifest, so it is added here explicitly (the module compiles the
+# protobuf definitions under proto/).
 manifest:
   remotes:
     - name: zephyrproject-rtos
@@ -14,6 +16,11 @@ manifest:
       # Pinned to a release whose net/wifi/credentials APIs this module targets.
       revision: v4.2.0
       import: true
+
+    - name: nanopb
+      remote: zephyrproject-rtos
+      revision: 4e73df5a72e470a8195c3efdaf1d0e45e22c3af7
+      path: modules/lib/nanopb
 
   self:
     path: network-provisioning-zephyr
