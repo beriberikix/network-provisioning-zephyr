@@ -1,0 +1,6 @@
+build/
+*.pb.c
+*.pb.h
+__pycache__/
+*.pyc
+.west/

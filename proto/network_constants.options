@@ -1,0 +1,9 @@
+# Connected-state fields: IPv4 string up to "255.255.255.255", SSID up to 32
+# bytes (+NUL), BSSID 6 bytes.
+WifiConnectedState.ip4_addr    max_size:16
+WifiConnectedState.ssid        max_size:33
+WifiConnectedState.bssid       max_size:6
+
+# Thread fields unused by this Wi-Fi-only port; bound small to limit footprint.
+ThreadAttachState.ext_pan_id   max_size:8
+ThreadAttachState.name         max_size:17

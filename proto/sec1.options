@@ -1,0 +1,7 @@
+# Curve25519 public keys are 32 bytes, AES-CTR IV (device_random) is 16 bytes,
+# verify-data blocks are the 32-byte peer public key encrypted under the session key.
+SessionCmd0.client_pubkey       max_size:32
+SessionResp0.device_pubkey      max_size:32
+SessionResp0.device_random      max_size:16
+SessionCmd1.client_verify_data  max_size:32
+SessionResp1.device_verify_data max_size:32

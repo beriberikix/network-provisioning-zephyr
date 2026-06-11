@@ -1,0 +1,16 @@
+sample:
+  name: Wi-Fi Provisioning over BLE
+  description: >
+    Provision Wi-Fi credentials from the stock ESP BLE Provisioning apps over a
+    secure protocomm session, using Zephyr's native wifi_credentials store.
+tests:
+  sample.net.wifi_prov_ble:
+    platform_allow:
+      - esp32_devkitc_wrover/esp32/procpu
+      - esp32s3_devkitc/esp32s3/procpu
+    tags:
+      - bluetooth
+      - wifi
+      - provisioning
+    harness: bluetooth
+    build_only: true

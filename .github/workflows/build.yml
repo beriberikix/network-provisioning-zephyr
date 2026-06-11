@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/zephyrproject-rtos/ci:latest
+    env:
+      CMAKE_PREFIX_PATH: /opt/toolchains
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - esp32_devkitc_wrover/esp32/procpu
+          - esp32s3_devkitc/esp32s3/procpu
+    steps:
+      - name: Checkout (into the module's manifest path)
+        uses: actions/checkout@v4
+        with:
+          path: modules/lib/network_provisioning
+
+      - name: Initialise west workspace
+        run: |
+          west init -l modules/lib/network_provisioning
+          west update --narrow -o=--depth=1
+          west zephyr-export
+
+      - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
+        run: west blobs fetch hal_espressif
+
+      - name: Build wifi_prov_ble sample
+        run: |
+          west build -b ${{ matrix.board }} \
+            modules/lib/network_provisioning/samples/wifi_prov_ble
