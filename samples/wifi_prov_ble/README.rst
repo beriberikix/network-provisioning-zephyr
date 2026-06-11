@@ -16,7 +16,7 @@ Requirements
 ************
 
 * A board with both Wi-Fi and Bluetooth LE. The sample is validated on the
-  ESP32 family (Wi-Fi + BLE coexistence), e.g. ``esp32_devkitc_wrover`` and
+  ESP32 family (Wi-Fi + BLE coexistence), e.g. ``esp32_devkitc`` and
   ``esp32s3_devkitc``.
 * One of the Espressif provisioning apps, or the ``esp_prov.py`` CLI from
   ``idf-extra-components/network_provisioning/tool/esp_prov``.
@@ -26,7 +26,7 @@ Building and Running
 
 .. code-block:: console
 
-   west build -b esp32_devkitc_wrover/esp32/procpu \
+   west build -b esp32_devkitc/esp32/procpu \
        modules/lib/network_provisioning/samples/wifi_prov_ble
    west flash
 

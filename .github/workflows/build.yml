@@ -8,26 +8,30 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/zephyrproject-rtos/ci:latest
-    env:
-      CMAKE_PREFIX_PATH: /opt/toolchains
     strategy:
       fail-fast: false
       matrix:
-        board:
-          - esp32_devkitc_wrover/esp32/procpu
-          - esp32s3_devkitc/esp32s3/procpu
+        include:
+          - board: esp32_devkitc/esp32/procpu
+            toolchain: xtensa-espressif_esp32_zephyr-elf
+          - board: esp32s3_devkitc/esp32s3/procpu
+            toolchain: xtensa-espressif_esp32s3_zephyr-elf
     steps:
       - name: Checkout (into the module's manifest path)
         uses: actions/checkout@v4
         with:
           path: modules/lib/network_provisioning
 
-      - name: Initialise west workspace
-        run: |
-          west init -l modules/lib/network_provisioning
-          west update --narrow -o=--depth=1
-          west zephyr-export
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: modules/lib/network_provisioning
+          toolchains: ${{ matrix.toolchain }}
 
       - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
         run: west blobs fetch hal_espressif
