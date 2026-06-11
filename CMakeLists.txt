@@ -1,0 +1,46 @@
+# Network provisioning manager (Wi-Fi over BLE) for Zephyr
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Public API headers are exposed unconditionally (absolute path) so the
+# application can include <network_provisioning/...> regardless of config or
+# module processing order.
+zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+if(CONFIG_NETWORK_PROV_MGR)
+  zephyr_library_named(network_provisioning)
+
+  zephyr_library_sources(
+    src/protocomm.c
+    src/protocomm_ble.c
+    src/pb_util.c
+    src/security0.c
+    src/security1.c
+    src/network_prov_mgr.c
+    src/wifi_config_handler.c
+    src/wifi_scan_handler.c
+  )
+
+  zephyr_library_include_directories(src)
+
+  # Compile the protobuf definitions with nanopb. The matching <name>.options
+  # files alongside each .proto bound the dynamic fields for static allocation.
+  list(APPEND CMAKE_MODULE_PATH ${ZEPHYR_BASE}/modules/nanopb)
+  include(nanopb)
+
+  zephyr_nanopb_sources(network_provisioning
+    proto/constants.proto
+    proto/sec0.proto
+    proto/sec1.proto
+    proto/session.proto
+    proto/network_constants.proto
+    proto/network_config.proto
+    proto/network_scan.proto
+  )
+
+  # nanopb generates the .pb.h headers under <build>/proto (mirroring the
+  # proto/ source dir via RELPATH), but only the binary root is auto-added to
+  # the include path. Expose the generated headers so sources can include them
+  # by basename, e.g. #include "session.pb.h".
+  zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR}/proto)
+endif()

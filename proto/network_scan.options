@@ -1,0 +1,11 @@
+# Each Wi-Fi scan entry: SSID up to 32 bytes (+NUL), BSSID 6 bytes.
+# Cap the number of entries returned in a single result message.
+WiFiScanResult.ssid            max_size:33
+WiFiScanResult.bssid           max_size:6
+RespScanWifiResult.entries     max_count:4
+
+# Thread scan fields unused (Wi-Fi-only port); bound small.
+ThreadScanResult.ext_addr      max_size:8
+ThreadScanResult.network_name  max_size:17
+ThreadScanResult.ext_pan_id    max_size:8
+RespScanThreadResult.entries   max_count:1

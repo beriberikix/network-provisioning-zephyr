@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: esp32s3_devkitc/esp32s3/procpu
+            toolchain: xtensa-espressif_esp32s3_zephyr-elf
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          toolchains: ${{ matrix.toolchain }}
+
+      - name: Install nanopb generator dependencies
+        # nanopb's zephyr_nanopb_sources() runs protoc via grpcio-tools.
+        # (west packages pip --install refuses to run outside a virtualenv.)
+        run: pip install grpcio-tools==1.68.0
+
+      - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
+        # The blob host occasionally returns transient 5xx errors; retry.
+        run: |
+          n=0
+          until west blobs fetch hal_espressif; do
+            n=$((n + 1))
+            if [ "$n" -ge 5 ]; then
+              echo "blob fetch still failing after $n attempts"; exit 1
+            fi
+            echo "transient blob fetch error; retry $n after backoff"
+            sleep $((n * 10))
+          done
+
+      - name: Build wifi_prov_ble sample
+        run: |
+          west build -b ${{ matrix.board }} \
+            network-provisioning-zephyr/samples/wifi_prov_ble

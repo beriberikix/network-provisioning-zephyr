@@ -1,0 +1,46 @@
+# Network provisioning manager (Wi-Fi over BLE) for Zephyr
+#
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig NETWORK_PROV_MGR
+	bool "Network provisioning manager (Wi-Fi over BLE)"
+	# Depend on (rather than select) heavy subsystems: selecting symbols that
+	# carry their own dependencies (Bluetooth, Wi-Fi, storage) triggers Kconfig
+	# recursive-dependency errors. The application enables these — see the
+	# sample's prj.conf.
+	depends on BT_PERIPHERAL && BT_GATT_DYNAMIC_DB
+	depends on WIFI && WIFI_CREDENTIALS
+	depends on MBEDTLS
+	depends on SETTINGS
+	depends on NANOPB
+	select EXPERIMENTAL
+	help
+	  Espressif-compatible network provisioning service. Lets the stock ESP
+	  BLE Provisioning apps (Android/iOS) configure the device's Wi-Fi
+	  credentials over a secure protocomm session carried on BLE GATT.
+
+	  Wi-Fi credentials are stored through the native wifi_credentials
+	  subsystem. Requires PSA Crypto (mbedTLS) for security scheme 1.
+
+if NETWORK_PROV_MGR
+
+config NETWORK_PROV_SCAN_MAX_ENTRIES
+	int "Maximum number of Wi-Fi scan entries cached"
+	default 16
+	help
+	  Upper bound on access points retained from a scan and offered to the
+	  app (which retrieves them in pages via prov-scan).
+
+config NETWORK_PROV_BLE_MAX_RESP_LEN
+	int "Maximum protocomm response length (bytes) per endpoint"
+	default 512
+	help
+	  Size of the per-characteristic response buffer. Must be large enough
+	  for the biggest encoded (and encrypted) response, dominated by a page
+	  of scan results.
+
+module = NETWORK_PROV
+module-str = network provisioning
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # NETWORK_PROV_MGR

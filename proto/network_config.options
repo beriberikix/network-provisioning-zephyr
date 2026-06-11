@@ -1,0 +1,9 @@
+# Wi-Fi credentials: SSID up to 32 bytes (+NUL), passphrase up to 63 (+NUL),
+# BSSID is 6 bytes. (WifiConnectedState lives in network_constants.proto.)
+CmdSetWifiConfig.ssid          max_size:33
+CmdSetWifiConfig.passphrase    max_size:64
+CmdSetWifiConfig.bssid         max_size:6
+
+# Thread field unused by this Wi-Fi-only port but kept so the .proto matches
+# upstream wire numbering; bound it small to limit footprint.
+CmdSetThreadConfig.dataset     max_size:1
