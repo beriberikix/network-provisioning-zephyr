@@ -45,7 +45,17 @@ jobs:
         run: pip install grpcio-tools==1.68.0
 
       - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
-        run: west blobs fetch hal_espressif
+        # The blob host occasionally returns transient 5xx errors; retry.
+        run: |
+          n=0
+          until west blobs fetch hal_espressif; do
+            n=$((n + 1))
+            if [ "$n" -ge 5 ]; then
+              echo "blob fetch still failing after $n attempts"; exit 1
+            fi
+            echo "transient blob fetch error; retry $n after backoff"
+            sleep $((n * 10))
+          done
 
       - name: Build wifi_prov_ble sample
         run: |
