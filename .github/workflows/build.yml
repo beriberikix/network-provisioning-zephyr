@@ -53,6 +53,10 @@ jobs:
         include:
           - board: esp32s3_devkitc/esp32s3/procpu
             toolchain: xtensa-espressif_esp32s3_zephyr-elf
+          # RISC-V coverage. The original esp32 is excluded: its DRAM
+          # overflows without PSRAM (see the sample README).
+          - board: esp32c3_devkitm
+            toolchain: riscv64-zephyr-elf
     steps:
       - name: Checkout
         uses: actions/checkout@v4
