@@ -100,6 +100,22 @@ void network_prov_wifi_config_deinit(void)
 	}
 }
 
+void network_prov_wifi_config_reset(void)
+{
+	/* Drop staged credentials and clear the reported connection state so
+	 * the app can retry provisioning after a failed attempt (prov-ctrl
+	 * CmdCtrlWifiReset / CmdCtrlWifiReprov).
+	 */
+	memset(wc.ssid, 0, sizeof(wc.ssid));
+	wc.ssid_len = 0;
+	memset(wc.pass, 0, sizeof(wc.pass));
+	wc.pass_len = 0;
+	wc.has_bssid = false;
+	wc.channel = 0;
+	wc.sta_state = WifiStationState_Disconnected;
+	wc.fail_reason = WifiConnectFailedReason_AuthError;
+}
+
 static Status do_set_config(const CmdSetWifiConfig *cmd)
 {
 	if (cmd->ssid.size == 0 || cmd->ssid.size > SSID_MAX) {

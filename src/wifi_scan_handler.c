@@ -40,6 +40,14 @@ static struct {
 	bool cb_registered;
 } sc;
 
+/* Signalled by NET_EVENT_WIFI_SCAN_DONE so a blocking ScanStart request can
+ * hold its response until the scan has completed (ESP-IDF semantics — the
+ * stock apps send blocking=true and only check the status once).
+ */
+static K_SEM_DEFINE(scan_done_sem, 0, 1);
+
+#define SCAN_BLOCKING_TIMEOUT K_SECONDS(10)
+
 static WifiAuthMode auth_from_zephyr(enum wifi_security_type sec)
 {
 	switch (sec) {
@@ -89,6 +97,7 @@ static void mgmt_event(struct net_mgmt_event_callback *cb, uint64_t event,
 	case NET_EVENT_WIFI_SCAN_DONE:
 		sc.finished = true;
 		LOG_INF("Scan done: %u AP(s)", (unsigned int)sc.count);
+		k_sem_give(&scan_done_sem);
 		break;
 	default:
 		break;
@@ -160,7 +169,24 @@ int network_prov_wifi_scan_handler(void *priv, const uint8_t *inbuf, size_t inle
 
 	switch (req.msg) {
 	case NetworkScanMsgType_TypeCmdScanWifiStart: {
+		bool blocking =
+			(req.which_payload ==
+			 NetworkScanPayload_cmd_scan_wifi_start_tag) &&
+			req.payload.cmd_scan_wifi_start.blocking;
+
+		k_sem_reset(&scan_done_sem);
+
 		Status s = do_scan_start();
+
+		/* ESP-IDF semantics: a blocking start replies only once the
+		 * scan has finished, so the apps' single status query already
+		 * sees scan_finished == true.
+		 */
+		if (s == Status_Success && blocking &&
+		    k_sem_take(&scan_done_sem, SCAN_BLOCKING_TIMEOUT) != 0) {
+			LOG_WRN("blocking scan timed out");
+			s = Status_InternalError;
+		}
 
 		resp.msg = NetworkScanMsgType_TypeRespScanWifiStart;
 		resp.which_payload = NetworkScanPayload_resp_scan_wifi_start_tag;

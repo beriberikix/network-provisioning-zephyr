@@ -161,6 +161,14 @@ int main(void)
 
 	/* Block until the device connects with the supplied credentials. */
 	network_prov_mgr_wait();
+
+	/* Keep the provisioning service alive briefly: the app is still
+	 * connected over BLE and polls GetWifiStatus to learn the result.
+	 * Tearing the GATT service down immediately makes the app report
+	 * "failed to provision" even though Wi-Fi connected (ESP-IDF keeps
+	 * the service up after success for the same reason).
+	 */
+	k_sleep(K_SECONDS(30));
 	network_prov_mgr_stop_provisioning();
 
 	LOG_INF("Provisioning complete");

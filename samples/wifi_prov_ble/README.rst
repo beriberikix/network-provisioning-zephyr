@@ -61,13 +61,25 @@ Defaults live in ``src/main.c`` and ``prj.conf``:
 * Security scheme — ``main.c`` uses ``NETWORK_PROV_SECURITY_1``. Pass
   ``NETWORK_PROV_SECURITY_0`` (and ``--sec_ver 0`` in the app/CLI) for an
   unencrypted bring-up session.
+* ``CONFIG_BT_RX_STACK_SIZE`` — must stay at 4096 or larger: the security-1
+  crypto runs on the Bluetooth host RX thread, and the Zephyr default (1.2 kB)
+  silently overflows there, wedging the controller on connect.
+* After a successful connection ``main.c`` keeps the provisioning service up
+  for 30 more seconds before stopping it. The app is still connected over BLE
+  at that point and polls the final status; stopping immediately makes the
+  apps report a failure even though Wi-Fi connected.
 
 Sample output
 *************
 
 .. code-block:: console
 
-   [00:00:00.123] <inf> app: Device not provisioned, starting BLE provisioning
-   [00:00:00.456] <inf> app: Provisioning started; connect with the ESP provisioning app
-   [00:00:30.789] <inf> app: Wi-Fi credentials received, connecting...
-   [00:00:34.012] <inf> app: Provisioning successful, Wi-Fi connected
+   [00:00:00.100] <inf> app: Device not provisioned, starting BLE provisioning
+   [00:00:00.135] <inf> app: Provisioning started; connect with the ESP provisioning app
+   [00:01:13.811] <inf> network_prov: central connected
+   [00:01:19.343] <inf> network_prov: Scan done: 16 AP(s)
+   [00:01:28.552] <inf> network_prov: Received credentials for SSID '<your-ssid>'
+   [00:01:28.753] <inf> app: Wi-Fi credentials received, connecting...
+   [00:01:33.824] <inf> network_prov: Wi-Fi connected
+   [00:01:33.824] <inf> app: Provisioning successful, Wi-Fi connected
+   [00:01:41.502] <inf> network_prov: central disconnected (reason 19)

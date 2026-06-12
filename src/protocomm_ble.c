@@ -39,6 +39,15 @@ LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 
 static struct bt_uuid_128 service_uuid = BT_UUID_INIT_128(PROV_SERVICE_UUID_VAL);
 
+/* The BT_UUID_GATT_* helper macros expand to compound literals, which only
+ * have static storage duration at file scope. This table is built inside
+ * build_service(), so using them there would leave the registered service
+ * pointing at dead stack memory. Give the declaration UUIDs real storage.
+ */
+static const struct bt_uuid_16 uuid_gatt_primary = BT_UUID_INIT_16(BT_UUID_GATT_PRIMARY_VAL);
+static const struct bt_uuid_16 uuid_gatt_chrc = BT_UUID_INIT_16(BT_UUID_GATT_CHRC_VAL);
+static const struct bt_uuid_16 uuid_gatt_cud = BT_UUID_INIT_16(BT_UUID_GATT_CUD_VAL);
+
 struct ep_io {
 	char name[PROTOCOMM_EP_NAME_MAX];
 	uint8_t resp[MAX_RESP_LEN];
@@ -145,7 +154,9 @@ static void build_service(void)
 		n = MAX_EP;
 	}
 
-	attrs[ai++] = (struct bt_gatt_attr)BT_GATT_PRIMARY_SERVICE(&service_uuid);
+	attrs[ai++] = (struct bt_gatt_attr)BT_GATT_ATTRIBUTE(
+		&uuid_gatt_primary.uuid, BT_GATT_PERM_READ,
+		bt_gatt_attr_read_service, NULL, &service_uuid);
 
 	for (size_t i = 0; i < n; i++) {
 		const char *name = protocomm_endpoint_name(g_pc, i);
@@ -164,13 +175,13 @@ static void build_service(void)
 		};
 
 		attrs[ai++] = (struct bt_gatt_attr)BT_GATT_ATTRIBUTE(
-			BT_UUID_GATT_CHRC, BT_GATT_PERM_READ,
+			&uuid_gatt_chrc.uuid, BT_GATT_PERM_READ,
 			bt_gatt_attr_read_chrc, NULL, &ep_chrc[i]);
 		attrs[ai++] = (struct bt_gatt_attr)BT_GATT_ATTRIBUTE(
 			&ep_uuid[i].uuid, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			read_ep, write_ep, &ep_io[i]);
 		attrs[ai++] = (struct bt_gatt_attr)BT_GATT_ATTRIBUTE(
-			BT_UUID_GATT_CUD, BT_GATT_PERM_READ,
+			&uuid_gatt_cud.uuid, BT_GATT_PERM_READ,
 			bt_gatt_attr_read_cud, NULL, ep_io[i].name);
 	}
 
@@ -197,10 +208,21 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	for (size_t i = 0; i < MAX_EP; i++) {
 		ep_io[i].resp_len = 0;
 	}
+}
+
+static void recycled(void)
+{
+	/* The connection object is only released after the disconnected
+	 * callback returns; restarting advertising from disconnected() fails
+	 * with -ENOMEM because the (single) connection slot is still in use.
+	 */
+	if (!svc_registered) {
+		return;
+	}
 
 	int ret = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
 				  sd, ARRAY_SIZE(sd));
-	if (ret) {
+	if (ret && ret != -EALREADY) {
 		LOG_ERR("failed to restart advertising: %d", ret);
 	}
 }
@@ -208,6 +230,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
+	.recycled = recycled,
 };
 
 int network_prov_ble_start(struct protocomm *pc, const char *device_name)
