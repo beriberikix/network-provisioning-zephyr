@@ -19,6 +19,7 @@ if(CONFIG_NETWORK_PROV_MGR)
     src/network_prov_mgr.c
     src/wifi_config_handler.c
     src/wifi_scan_handler.c
+    src/wifi_ctrl_handler.c
   )
 
   zephyr_library_include_directories(src)
@@ -36,6 +37,7 @@ if(CONFIG_NETWORK_PROV_MGR)
     proto/network_constants.proto
     proto/network_config.proto
     proto/network_scan.proto
+    proto/network_ctrl.proto
   )
 
   # nanopb generates the .pb.h headers under <build>/proto (mirroring the

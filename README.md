@@ -44,6 +44,11 @@ descriptor, which is how the apps map names to characteristics.
 | `prov-session` | Security handshake (`SessionData` / sec0 / sec1)               |
 | `prov-scan`    | Wi-Fi scan (`NetworkScanPayload`)                              |
 | `prov-config`  | Set/apply credentials, report status (`NetworkConfigPayload`)  |
+| `prov-ctrl`    | Wi-Fi state reset / re-provision (`NetworkCtrlPayload`)        |
+
+A scan started with `blocking = true` (what the apps send) withholds its
+response until the scan completes, matching ESP-IDF; the apps query the scan
+status only once.
 
 The `.proto` files under [`proto/`](proto/) are taken verbatim from ESP-IDF
 (protocomm) and the `network_provisioning` component, so field numbering — and
@@ -103,6 +108,11 @@ Add this repo to your `west.yml` and enable `CONFIG_NETWORK_PROV_MGR=y`. The
 required Zephyr subsystems (`BT_PERIPHERAL`, `WIFI`, `MBEDTLS`, `NANOPB`,
 `WIFI_CREDENTIALS`, `SETTINGS`) plus a large ATT MTU are set up in the sample's
 [`prj.conf`](samples/wifi_prov_ble/prj.conf) — copy the relevant lines.
+
+> **Important:** `CONFIG_BT_RX_STACK_SIZE=4096` (or larger) is required. The
+> security-1 session setup and handshake run PSA crypto on the Bluetooth host
+> RX thread via the GATT callbacks; Zephyr's default 1.2 kB RX stack silently
+> overflows there and wedges the BLE controller as soon as a central connects.
 
 ## License
 

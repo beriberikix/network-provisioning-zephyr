@@ -27,6 +27,7 @@ LOG_MODULE_REGISTER(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 #define EP_SESSION  "prov-session"
 #define EP_SCAN     "prov-scan"
 #define EP_CONFIG   "prov-config"
+#define EP_CTRL     "prov-ctrl"
 
 static struct {
 	bool inited;
@@ -158,6 +159,12 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 	}
 	ret = protocomm_add_endpoint(mgr.pc, EP_CONFIG,
 				     network_prov_wifi_config_handler, NULL);
+	if (ret) {
+		goto err;
+	}
+
+	ret = protocomm_add_endpoint(mgr.pc, EP_CTRL,
+				     network_prov_wifi_ctrl_handler, NULL);
 	if (ret) {
 		goto err;
 	}

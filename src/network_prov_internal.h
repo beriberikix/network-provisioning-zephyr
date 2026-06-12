@@ -20,8 +20,13 @@ void network_prov_emit_event(enum network_prov_cb_event event, void *event_data)
 /* prov-config endpoint (Wi-Fi credentials + connection state machine). */
 int network_prov_wifi_config_init(void);
 void network_prov_wifi_config_deinit(void);
+void network_prov_wifi_config_reset(void);
 int network_prov_wifi_config_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				     uint8_t **outbuf, size_t *outlen);
+
+/* prov-ctrl endpoint (Wi-Fi state-machine reset / re-provision). */
+int network_prov_wifi_ctrl_handler(void *priv, const uint8_t *inbuf, size_t inlen,
+				   uint8_t **outbuf, size_t *outlen);
 
 /* prov-scan endpoint (Wi-Fi scanning). */
 int network_prov_wifi_scan_init(void);
