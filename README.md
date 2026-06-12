@@ -79,6 +79,7 @@ network_prov_mgr_is_provisioned(&provisioned); /* !wifi_credentials_is_empty()  
 network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, "abcd1234", "PROV_1234");
 network_prov_mgr_wait();                        /* blocks until connected            */
 network_prov_mgr_stop_provisioning();
+network_prov_mgr_reset_wifi_provisioning();     /* explicit factory reset: erase creds */
 ```
 
 Lifecycle events (`NETWORK_PROV_START`, `CRED_RECV`, `CRED_FAIL`, `CRED_SUCCESS`,
