@@ -1,0 +1,10 @@
+tests:
+  network_provisioning.security1:
+    modules:
+      - nanopb
+    tags:
+      - network_provisioning
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

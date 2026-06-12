@@ -2,6 +2,16 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+config NETWORK_PROV_CORE
+	bool "Network provisioning protocol core (protocomm + security schemes)"
+	depends on NANOPB
+	depends on MBEDTLS
+	help
+	  Transport-agnostic protocomm engine, the protobuf wire format and the
+	  security schemes 0/1. Has no Bluetooth, Wi-Fi or storage dependencies,
+	  so it also builds on native_sim — this is what the unit tests enable.
+	  Selected automatically by NETWORK_PROV_MGR.
+
 menuconfig NETWORK_PROV_MGR
 	bool "Network provisioning manager (Wi-Fi over BLE)"
 	# Depend on (rather than select) heavy subsystems: selecting symbols that
@@ -13,6 +23,7 @@ menuconfig NETWORK_PROV_MGR
 	depends on MBEDTLS
 	depends on SETTINGS
 	depends on NANOPB
+	select NETWORK_PROV_CORE
 	select EXPERIMENTAL
 	help
 	  Espressif-compatible network provisioning service. Lets the stock ESP
@@ -39,8 +50,12 @@ config NETWORK_PROV_BLE_MAX_RESP_LEN
 	  for the biggest encoded (and encrypted) response, dominated by a page
 	  of scan results.
 
+endif # NETWORK_PROV_MGR
+
+if NETWORK_PROV_CORE
+
 module = NETWORK_PROV
 module-str = network provisioning
 source "subsys/logging/Kconfig.template.log_config"
 
-endif # NETWORK_PROV_MGR
+endif # NETWORK_PROV_CORE

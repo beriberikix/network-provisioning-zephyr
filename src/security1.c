@@ -75,7 +75,10 @@ static int sec1_init(void **out_ctx, const char *pop)
 	ctx->cipher = psa_cipher_operation_init();
 
 	if (pop != NULL && pop[0] != '\0') {
-		ctx->pop_len = strnlen(pop, POP_MAX - 1);
+		/* Not strnlen(): the host libc on native_sim hides it behind
+		 * POSIX feature macros.
+		 */
+		ctx->pop_len = MIN(strlen(pop), (size_t)(POP_MAX - 1));
 		memcpy(ctx->pop, pop, ctx->pop_len);
 	}
 
