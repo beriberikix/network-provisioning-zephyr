@@ -11,7 +11,7 @@ message RespCtrlWifiReset {
 message CmdCtrlWifiReprov {
 }
 
-message RespCtrlWifiReprov{
+message RespCtrlWifiReprov {
 }
 
 message CmdCtrlThreadReset {
@@ -23,7 +23,7 @@ message RespCtrlThreadReset {
 message CmdCtrlThreadReprov {
 }
 
-message RespCtrlThreadReprov{
+message RespCtrlThreadReprov {
 }
 
 enum NetworkCtrlMsgType {

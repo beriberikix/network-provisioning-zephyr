@@ -42,7 +42,9 @@ static struct {
 
 /* Signalled by NET_EVENT_WIFI_SCAN_DONE so a blocking ScanStart request can
  * hold its response until the scan has completed (ESP-IDF semantics — the
- * stock apps send blocking=true and only check the status once).
+ * stock apps send blocking=true and only check the status once). The wait is
+ * bounded by SCAN_BLOCKING_TIMEOUT; on timeout the request fails with
+ * Status_InternalError rather than blocking the BT RX thread indefinitely.
  */
 static K_SEM_DEFINE(scan_done_sem, 0, 1);
 
