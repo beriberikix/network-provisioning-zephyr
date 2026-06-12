@@ -83,7 +83,11 @@ static void conn_mgmt_event(struct net_mgmt_event_callback *cb, uint64_t event,
 		const struct wifi_status *status =
 			(const struct wifi_status *)cb->info;
 
-		conn_result_status = status->conn_status;
+		/* status and conn_status alias each other in the wifi_status
+		 * union: 0 means success, nonzero is the wifi_conn_status
+		 * failure reason.
+		 */
+		conn_result_status = status->status;
 		k_sem_give(&conn_result_sem);
 	}
 }
