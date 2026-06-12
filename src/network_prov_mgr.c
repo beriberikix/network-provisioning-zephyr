@@ -32,6 +32,7 @@ LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL); /* registered i
 static struct {
 	bool inited;
 	bool started;
+	enum network_prov_scheme scheme;
 	struct network_prov_event_handler app;
 	struct protocomm *pc;
 	char version_json[160];
@@ -53,10 +54,15 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 	if (mgr.inited) {
 		return -EALREADY;
 	}
-	if (config.scheme != NETWORK_PROV_SCHEME_BLE) {
+	if ((config.scheme == NETWORK_PROV_SCHEME_BLE &&
+	     !IS_ENABLED(CONFIG_NETWORK_PROV_BLE)) ||
+	    (config.scheme == NETWORK_PROV_SCHEME_SOFTAP &&
+	     !IS_ENABLED(CONFIG_NETWORK_PROV_SOFTAP))) {
+		LOG_ERR("Transport for scheme %d not enabled", config.scheme);
 		return -ENOTSUP;
 	}
 
+	mgr.scheme = config.scheme;
 	mgr.app = config.app_event_handler;
 	k_sem_init(&mgr.done, 0, 1);
 
@@ -128,7 +134,8 @@ static void build_version_json(enum network_prov_security security, const char *
 }
 
 int network_prov_mgr_start_provisioning(enum network_prov_security security,
-					const char *pop, const char *service_name)
+					const char *pop, const char *service_name,
+					const char *service_key)
 {
 	int ret;
 
@@ -186,7 +193,22 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 		goto err;
 	}
 
-	ret = network_prov_ble_start(mgr.pc, service_name);
+	switch (mgr.scheme) {
+#if defined(CONFIG_NETWORK_PROV_BLE)
+	case NETWORK_PROV_SCHEME_BLE:
+		ARG_UNUSED(service_key);
+		ret = network_prov_ble_start(mgr.pc, service_name);
+		break;
+#endif
+#if defined(CONFIG_NETWORK_PROV_SOFTAP)
+	case NETWORK_PROV_SCHEME_SOFTAP:
+		ret = network_prov_softap_start(mgr.pc, service_name, service_key);
+		break;
+#endif
+	default:
+		ret = -ENOTSUP;
+		break;
+	}
 	if (ret) {
 		goto err;
 	}
@@ -209,7 +231,16 @@ void network_prov_mgr_stop_provisioning(void)
 	if (!mgr.started) {
 		return;
 	}
-	network_prov_ble_stop();
+#if defined(CONFIG_NETWORK_PROV_BLE)
+	if (mgr.scheme == NETWORK_PROV_SCHEME_BLE) {
+		network_prov_ble_stop();
+	}
+#endif
+#if defined(CONFIG_NETWORK_PROV_SOFTAP)
+	if (mgr.scheme == NETWORK_PROV_SCHEME_SOFTAP) {
+		network_prov_softap_stop();
+	}
+#endif
 	network_prov_wifi_scan_deinit();
 	network_prov_wifi_config_deinit();
 	protocomm_delete(mgr.pc);

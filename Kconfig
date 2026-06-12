@@ -12,13 +12,34 @@ config NETWORK_PROV_CORE
 	  so it also builds on native_sim — this is what the unit tests enable.
 	  Selected automatically by NETWORK_PROV_MGR.
 
-menuconfig NETWORK_PROV_MGR
-	bool "Network provisioning manager (Wi-Fi over BLE)"
-	# Depend on (rather than select) heavy subsystems: selecting symbols that
-	# carry their own dependencies (Bluetooth, Wi-Fi, storage) triggers Kconfig
-	# recursive-dependency errors. The application enables these — see the
-	# sample's prj.conf.
+config NETWORK_PROV_BLE
+	bool "BLE transport (protocomm over GATT)"
+	depends on NETWORK_PROV_CORE
 	depends on BT_PERIPHERAL && BT_GATT_DYNAMIC_DB
+	help
+	  Carry the provisioning protocol over BLE GATT — what the stock
+	  "ESP BLE Provisioning" apps speak.
+
+config NETWORK_PROV_SOFTAP
+	bool "SoftAP transport (protocomm over HTTP)"
+	depends on NETWORK_PROV_CORE
+	depends on HTTP_SERVER
+	# HTTP_SERVER builds without TCP but its listener then fails at runtime
+	# with EPROTOTYPE, so require TCP explicitly.
+	depends on NET_TCP
+	help
+	  Carry the provisioning protocol over HTTP POST on a device-hosted
+	  access point at 192.168.4.1 — what the stock "ESP SoftAP
+	  Provisioning" apps speak. The AP itself additionally needs Wi-Fi
+	  AP+STA mode and a DHCPv4 server; see the wifi_prov_softap sample's
+	  prj.conf.
+
+menuconfig NETWORK_PROV_MGR
+	bool "Network provisioning manager (Wi-Fi provisioning)"
+	# Depend on (rather than select) heavy subsystems: selecting symbols that
+	# carry their own dependencies (Wi-Fi, storage) triggers Kconfig
+	# recursive-dependency errors. The application enables these — and one of
+	# the transports above — see the samples' prj.conf files.
 	depends on WIFI && WIFI_CREDENTIALS
 	depends on MBEDTLS
 	depends on SETTINGS
@@ -27,8 +48,10 @@ menuconfig NETWORK_PROV_MGR
 	select EXPERIMENTAL
 	help
 	  Espressif-compatible network provisioning service. Lets the stock ESP
-	  BLE Provisioning apps (Android/iOS) configure the device's Wi-Fi
-	  credentials over a secure protocomm session carried on BLE GATT.
+	  provisioning apps (Android/iOS) configure the device's Wi-Fi
+	  credentials over a secure protocomm session carried on BLE GATT
+	  (NETWORK_PROV_BLE) or HTTP over a device-hosted access point
+	  (NETWORK_PROV_SOFTAP). Enable at least one transport.
 
 	  Wi-Fi credentials are stored through the native wifi_credentials
 	  subsystem. Requires PSA Crypto (mbedTLS) for security scheme 1.

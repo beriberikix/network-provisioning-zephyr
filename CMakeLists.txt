@@ -45,9 +45,21 @@ if(CONFIG_NETWORK_PROV_CORE)
   # by basename, e.g. #include "session.pb.h".
   zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR}/proto)
 
+  if(CONFIG_NETWORK_PROV_BLE)
+    zephyr_library_sources(src/protocomm_ble.c)
+  endif()
+
+  if(CONFIG_NETWORK_PROV_SOFTAP)
+    zephyr_library_sources(src/protocomm_softap.c)
+    # The HTTP service's resource list lives in a per-service iterable
+    # section that the linker script must lay out.
+    zephyr_linker_sources(SECTIONS src/sections-rom.ld)
+    zephyr_linker_section(NAME http_resource_desc_network_prov_http_service
+                          KVMA RAM_REGION GROUP RODATA_REGION)
+  endif()
+
   if(CONFIG_NETWORK_PROV_MGR)
     zephyr_library_sources(
-      src/protocomm_ble.c
       src/network_prov_mgr.c
       src/wifi_config_handler.c
       src/wifi_scan_handler.c

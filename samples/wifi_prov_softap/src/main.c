@@ -1,12 +1,11 @@
 /*
- * Wi-Fi provisioning over BLE sample.
+ * Wi-Fi provisioning over SoftAP (HTTP) sample.
  *
- * Advertises a "PROV_..." BLE peripheral that the stock ESP BLE Provisioning
- * apps can connect to in order to configure Wi-Fi credentials. On reboot, if
- * credentials are already stored, it connects with them instead — retrying
- * with backoff, and falling back to provisioning mode (credentials kept) if
- * the network stays unreachable, so a headless device never becomes
- * unreachable over both radios.
+ * Hosts a "PROV_..." access point; the stock ESP SoftAP Provisioning apps
+ * (or esp_prov.py --transport softap) join it and configure Wi-Fi credentials
+ * over HTTP at 192.168.4.1. On reboot, if credentials are already stored, it
+ * connects with them instead — retrying with backoff and falling back to
+ * provisioning mode (credentials kept) if the network stays unreachable.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -26,14 +25,12 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
  * Set to an empty string to advertise the "no_pop" capability instead.
  */
 #define PROV_POP          "abcd1234"
-#define PROV_DEVICE_NAME  CONFIG_BT_DEVICE_NAME
+/* SSID of the provisioning access point. The stock apps filter on "PROV_". */
+#define PROV_SERVICE_NAME "PROV_ZEPHYR"
+/* AP password (8..64 characters for WPA2-PSK) or NULL for an open AP. */
+#define PROV_SERVICE_KEY  NULL
 
-/* Stored-credential reconnect policy (reboot path). Credentials are never
- * erased automatically — after the attempts below the sample re-enters
- * provisioning mode and tries the stored credentials again on the next boot.
- * For an explicit factory reset (e.g. a button), call
- * network_prov_mgr_reset_wifi_provisioning().
- */
+/* Stored-credential reconnect policy (reboot path); see the BLE sample. */
 #define SAVED_CONN_ATTEMPTS    5
 #define SAVED_CONN_TIMEOUT     K_SECONDS(45)
 #define SAVED_CONN_BACKOFF_MAX 16 /* seconds */
@@ -45,8 +42,9 @@ static void prov_event(void *user_data, enum network_prov_cb_event event,
 
 	switch (event) {
 	case NETWORK_PROV_START:
-		LOG_INF("Provisioning started; connect with the ESP provisioning app");
-		LOG_INF("  device name : %s", PROV_DEVICE_NAME);
+		LOG_INF("Provisioning started; join the AP and open the ESP "
+			"SoftAP Provisioning app");
+		LOG_INF("  AP SSID     : %s", PROV_SERVICE_NAME);
 		LOG_INF("  proof-of-pos: %s", PROV_POP[0] ? PROV_POP : "(none)");
 		break;
 	case NETWORK_PROV_CRED_RECV:
@@ -66,10 +64,7 @@ static void prov_event(void *user_data, enum network_prov_cb_event event,
 	}
 }
 
-/* Connect-result plumbing for the stored-credential (reboot) path. The
- * manager's own handler only runs while provisioning is active, so the sample
- * tracks the result of its own connect attempts here.
- */
+/* Connect-result plumbing for the stored-credential (reboot) path. */
 static K_SEM_DEFINE(conn_result_sem, 0, 1);
 static int conn_result_status;
 static struct net_mgmt_event_callback conn_cb;
@@ -84,8 +79,7 @@ static void conn_mgmt_event(struct net_mgmt_event_callback *cb, uint64_t event,
 			(const struct wifi_status *)cb->info;
 
 		/* status and conn_status alias each other in the wifi_status
-		 * union: 0 means success, nonzero is the wifi_conn_status
-		 * failure reason.
+		 * union: 0 means success, nonzero is the failure reason.
 		 */
 		conn_result_status = status->status;
 		k_sem_give(&conn_result_sem);
@@ -111,11 +105,6 @@ static void pick_ssid(void *arg, const char *ssid, size_t ssid_len)
 	s->found = true;
 }
 
-/* One synchronous connect attempt with the stored credentials.
- *
- * @return 0 when connected, -ENOENT when no credentials are stored, another
- *         negative errno on failure (the cause is logged).
- */
 static int connect_saved_once(void)
 {
 	struct saved_ssid s = {0};
@@ -181,7 +170,6 @@ static int connect_saved_once(void)
 	return 0;
 }
 
-/* Try the stored credentials with backoff; true when connected. */
 static bool connect_saved(void)
 {
 	bool connected = false;
@@ -217,14 +205,11 @@ static bool connect_saved(void)
 	return connected;
 }
 
-/* Run one full provisioning cycle: advertise, wait for credentials, give the
- * app time to read the final status, then stop.
- */
 static int run_provisioning(void)
 {
 	int ret = network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1,
-						      PROV_POP, PROV_DEVICE_NAME,
-						      NULL);
+						      PROV_POP, PROV_SERVICE_NAME,
+						      PROV_SERVICE_KEY);
 	if (ret != 0) {
 		LOG_ERR("Failed to start provisioning: %d", ret);
 		return ret;
@@ -233,11 +218,8 @@ static int run_provisioning(void)
 	/* Block until the device connects with the supplied credentials. */
 	network_prov_mgr_wait();
 
-	/* Keep the provisioning service alive briefly: the app is still
-	 * connected over BLE and polls GetWifiStatus to learn the result.
-	 * Tearing the GATT service down immediately makes the app report
-	 * "failed to provision" even though Wi-Fi connected (ESP-IDF keeps
-	 * the service up after success for the same reason).
+	/* Keep the provisioning service alive briefly: the app still polls
+	 * GetWifiStatus over the AP to learn the result.
 	 */
 	k_sleep(K_SECONDS(30));
 	network_prov_mgr_stop_provisioning();
@@ -249,7 +231,7 @@ static int run_provisioning(void)
 int main(void)
 {
 	struct network_prov_mgr_config config = {
-		.scheme = NETWORK_PROV_SCHEME_BLE,
+		.scheme = NETWORK_PROV_SCHEME_SOFTAP,
 		.app_event_handler = {
 			.event_cb = prov_event,
 			.user_data = NULL,
@@ -272,15 +254,10 @@ int main(void)
 		if (connect_saved()) {
 			return 0;
 		}
-		/* The stored network stayed unreachable. Re-enter provisioning
-		 * for reachability, but keep the credentials (upstream ESP-IDF
-		 * policy: never erase automatically) — the next boot retries
-		 * them, and a successful re-provision overwrites them.
-		 */
 		LOG_WRN("Stored credentials did not connect; starting "
 			"provisioning (credentials kept for next boot)");
 	} else {
-		LOG_INF("Device not provisioned, starting BLE provisioning");
+		LOG_INF("Device not provisioned, starting SoftAP provisioning");
 	}
 
 	(void)run_provisioning();

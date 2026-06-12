@@ -1,0 +1,15 @@
+sample:
+  name: Wi-Fi Provisioning over SoftAP
+  description: >
+    Provision Wi-Fi credentials from the stock ESP SoftAP Provisioning apps
+    over a secure protocomm session carried on HTTP, on a device-hosted
+    access point.
+tests:
+  sample.net.wifi_prov_softap:
+    platform_allow:
+      - esp32s3_devkitc/esp32s3/procpu
+      - esp32c3_devkitm
+    tags:
+      - wifi
+      - provisioning
+    build_only: true
