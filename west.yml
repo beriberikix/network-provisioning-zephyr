@@ -13,13 +13,17 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      # Pinned to a release whose net/wifi/credentials APIs this module targets.
-      revision: v4.2.0
+      # Pinned to the latest stable release. Moving to a newer release is a
+      # one-line bump here; CI builds the sample and runs the unit tests
+      # against whatever this pins.
+      revision: v4.4.1
       import: true
 
     - name: nanopb
       remote: zephyrproject-rtos
-      revision: 4e73df5a72e470a8195c3efdaf1d0e45e22c3af7
+      # Keep in sync with the nanopb revision Zephyr's own manifest pins for
+      # the release above.
+      revision: 5499fd4c9a478f8139eeb07a82c3b4468d6067f7
       path: modules/lib/nanopb
 
   self:

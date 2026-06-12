@@ -19,7 +19,11 @@
 #include "protocomm.h"
 #include "security.h"
 
-LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
+/* The shared "network_prov" log module is registered here because security0
+ * is always part of the protocol core, which can be built without the
+ * manager (e.g. for the native_sim unit tests).
+ */
+LOG_MODULE_REGISTER(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 
 /* sec0 has no per-session state, but protocomm requires a non-NULL context to
  * mark a session as established, so we hand back a sentinel.

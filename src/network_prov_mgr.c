@@ -21,7 +21,7 @@
 #include "protocomm.h"
 #include "security.h"
 
-LOG_MODULE_REGISTER(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
+LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL); /* registered in security0.c */
 
 #define EP_VERSION  "proto-ver"
 #define EP_SESSION  "prov-session"

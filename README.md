@@ -1,5 +1,7 @@
 # network-provisioning-zephyr
 
+[![CI](https://github.com/beriberikix/network-provisioning-zephyr/actions/workflows/build.yml/badge.svg)](https://github.com/beriberikix/network-provisioning-zephyr/actions/workflows/build.yml)
+
 A Zephyr RTOS port of Espressif's
 [network provisioning](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/provisioning.html)
 protocol for **Wi-Fi over Bluetooth LE**.
@@ -62,8 +64,9 @@ proto/        protobuf definitions (+ nanopb .options) — verbatim wire format
 include/      public API (network_provisioning/network_prov_mgr.h)
 src/          protocomm core, BLE transport, security 0/1, Wi-Fi handlers, manager
 samples/      wifi_prov_ble — the reference application
+tests/        ztest unit tests for the protocol core (run on native_sim)
 zephyr/       module.yml (consumable as a Zephyr module)
-west.yml      standalone west manifest (pins Zephyr v4.2.0)
+west.yml      standalone west manifest (pins the current stable Zephyr release)
 ```
 
 ## Public API
@@ -101,6 +104,19 @@ next boot.
 
 See [`samples/wifi_prov_ble/README.rst`](samples/wifi_prov_ble/README.rst) for
 details, the `esp_prov.py` flow, and configuration knobs.
+
+## Running the tests
+
+Unit tests for the protocol core (protocomm engine, security schemes 0/1 —
+including a full client-side security-1 handshake) run on `native_sim`:
+
+```sh
+west twister -T network-provisioning-zephyr/tests -p native_sim --inline-logs
+```
+
+CI runs the same suite plus an `esp32s3_devkitc` sample build against the
+Zephyr release pinned in [`west.yml`](west.yml) on every push and pull
+request; moving to a newer stable release is a one-line bump of that pin.
 
 ## Using it as a module in an existing workspace
 

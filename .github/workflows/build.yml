@@ -1,4 +1,4 @@
-name: Build
+name: CI
 
 on:
   push:
@@ -12,7 +12,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests:
+    name: Unit tests (native_sim)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          # native_sim builds with the host compiler; the SDK provides
+          # host tools and keeps the setup uniform with the build job.
+          toolchains: x86_64-zephyr-elf
+
+      - name: Install nanopb generator dependencies
+        # nanopb's zephyr_nanopb_sources() runs protoc via grpcio-tools.
+        # (west packages pip --install refuses to run outside a virtualenv.)
+        run: pip install grpcio-tools==1.68.0
+
+      - name: Run unit tests with twister
+        run: |
+          west twister -T network-provisioning-zephyr/tests \
+            -p native_sim --inline-logs -v
+
   build:
+    name: Build sample
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

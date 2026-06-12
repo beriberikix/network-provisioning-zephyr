@@ -7,19 +7,18 @@
 # module processing order.
 zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-if(CONFIG_NETWORK_PROV_MGR)
+# The transport-agnostic protocol core (protocomm engine, protobuf helpers,
+# security schemes 0/1) builds standalone — including on native_sim, which is
+# how the unit tests under tests/ consume it. NETWORK_PROV_MGR selects it and
+# layers the BLE transport, Wi-Fi handlers and the manager on top.
+if(CONFIG_NETWORK_PROV_CORE)
   zephyr_library_named(network_provisioning)
 
   zephyr_library_sources(
     src/protocomm.c
-    src/protocomm_ble.c
     src/pb_util.c
     src/security0.c
     src/security1.c
-    src/network_prov_mgr.c
-    src/wifi_config_handler.c
-    src/wifi_scan_handler.c
-    src/wifi_ctrl_handler.c
   )
 
   zephyr_library_include_directories(src)
@@ -45,4 +44,14 @@ if(CONFIG_NETWORK_PROV_MGR)
   # the include path. Expose the generated headers so sources can include them
   # by basename, e.g. #include "session.pb.h".
   zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR}/proto)
+
+  if(CONFIG_NETWORK_PROV_MGR)
+    zephyr_library_sources(
+      src/protocomm_ble.c
+      src/network_prov_mgr.c
+      src/wifi_config_handler.c
+      src/wifi_scan_handler.c
+      src/wifi_ctrl_handler.c
+    )
+  endif()
 endif()
