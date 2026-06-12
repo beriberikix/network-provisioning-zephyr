@@ -37,6 +37,15 @@ static struct {
 	bool has_bssid;
 	uint8_t channel;
 
+	/* SSID of the connect attempt currently in flight. Snapshotted at
+	 * apply time because wc.ssid may be rewritten (a new Set/Apply) or
+	 * cleared (CmdCtrlWifiReset) before the asynchronous connect result
+	 * arrives; zero length means no attempt is pending and a stale result
+	 * event must be ignored.
+	 */
+	uint8_t inflight_ssid[SSID_MAX + 1];
+	size_t inflight_ssid_len;
+
 	/* Reported connection state. */
 	WifiStationState sta_state;
 	WifiConnectFailedReason fail_reason;
@@ -54,9 +63,19 @@ static void on_connect_result(struct net_mgmt_event_callback *cb)
 {
 	const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
+	if (wc.inflight_ssid_len == 0) {
+		/* No attempt pending (e.g. CmdCtrlWifiReset arrived while the
+		 * connect was in flight): don't let a stale result clobber the
+		 * fresh state or someone else's stored credentials.
+		 */
+		LOG_DBG("ignoring stale connect result");
+		return;
+	}
+
 	if (status->status == 0) {
 		LOG_INF("Wi-Fi connected");
 		wc.sta_state = WifiStationState_Connected;
+		wc.inflight_ssid_len = 0;
 		network_prov_emit_event(NETWORK_PROV_CRED_SUCCESS, NULL);
 	} else {
 		LOG_WRN("Wi-Fi connect failed (conn_status %d)", status->conn_status);
@@ -81,10 +100,13 @@ static void on_connect_result(struct net_mgmt_event_callback *cb)
 		 * not work, and keeping them would make the device boot
 		 * "provisioned" (and not advertise) after a power cycle even
 		 * though provisioning never succeeded. An in-session retry
-		 * stores fresh credentials on the next apply.
+		 * stores fresh credentials on the next apply. Deleting by the
+		 * in-flight snapshot (not wc.ssid) keeps a quick retry's
+		 * freshly staged credentials safe.
 		 */
-		(void)wifi_credentials_delete_by_ssid((const char *)wc.ssid,
-						      wc.ssid_len);
+		(void)wifi_credentials_delete_by_ssid(
+			(const char *)wc.inflight_ssid, wc.inflight_ssid_len);
+		wc.inflight_ssid_len = 0;
 
 		network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
 	}
@@ -131,6 +153,8 @@ void network_prov_wifi_config_reset(void)
 	wc.pass_len = 0;
 	wc.has_bssid = false;
 	wc.channel = 0;
+	memset(wc.inflight_ssid, 0, sizeof(wc.inflight_ssid));
+	wc.inflight_ssid_len = 0;
 	wc.sta_state = WifiStationState_Disconnected;
 	wc.fail_reason = WifiConnectFailedReason_AuthError;
 }
@@ -215,6 +239,8 @@ static Status do_apply_config(void)
 	}
 
 	wc.sta_state = WifiStationState_Connecting;
+	memcpy(wc.inflight_ssid, wc.ssid, sizeof(wc.inflight_ssid));
+	wc.inflight_ssid_len = wc.ssid_len;
 
 	ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
 	if (ret != 0) {
@@ -230,6 +256,7 @@ static Status do_apply_config(void)
 		LOG_ERR("Connect request failed: %d", ret);
 		wc.sta_state = WifiStationState_ConnectionFailed;
 		wc.fail_reason = WifiConnectFailedReason_AuthError;
+		wc.inflight_ssid_len = 0;
 
 		(void)wifi_credentials_delete_by_ssid((const char *)wc.ssid,
 						      wc.ssid_len);
