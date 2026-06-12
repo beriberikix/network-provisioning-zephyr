@@ -18,6 +18,7 @@
 #include <zephyr/net/http/server.h>
 #include <zephyr/net/http/service.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -111,7 +112,18 @@ static bool get_cookie_session(const struct http_request_ctx *request_ctx,
 		if (p == NULL) {
 			return false;
 		}
-		*out_id = (uint32_t)strtoul(p + strlen("session="), NULL, 10);
+
+		/* Require at least one digit and a value that fits uint32_t:
+		 * a malformed cookie must not alias a valid session id.
+		 */
+		const char *digits = p + strlen("session=");
+		char *end;
+		unsigned long id = strtoul(digits, &end, 10);
+
+		if (end == digits || id > UINT32_MAX) {
+			return false;
+		}
+		*out_id = (uint32_t)id;
 		return true;
 	}
 	return false;
@@ -125,6 +137,13 @@ static bool get_cookie_session(const struct http_request_ctx *request_ctx,
  */
 static bool req_cookie_present;
 static uint32_t req_cookie_id;
+
+/* Owner of the in-flight request state above. Requests to one resource are
+ * serialized by the server's holder mechanism, but with more than one client
+ * slot a second client could hit a *different* endpoint while a request is
+ * still accumulating — reject it instead of corrupting the shared buffers.
+ */
+static const struct http_client_ctx *req_client;
 
 static void ensure_session(void)
 {
@@ -144,9 +163,19 @@ static int prov_http_handler(struct http_client_ctx *client,
 
 	if (status == HTTP_SERVER_TRANSACTION_ABORTED ||
 	    status == HTTP_SERVER_TRANSACTION_COMPLETE) {
-		req_len = 0;
-		req_cookie_present = false;
+		if (req_client == client) {
+			req_len = 0;
+			req_cookie_present = false;
+			req_client = NULL;
+		}
 		return 0;
+	}
+
+	if (req_client == NULL) {
+		req_client = client;
+	} else if (req_client != client) {
+		LOG_WRN("rejecting concurrent request for '%s'", ep_name);
+		return -EBUSY;
 	}
 
 	if (request_ctx->headers_status == HTTP_HEADER_STATUS_OK) {
@@ -159,6 +188,8 @@ static int prov_http_handler(struct http_client_ctx *client,
 	if (request_ctx->data_len + req_len > sizeof(req_buf)) {
 		LOG_ERR("request for '%s' exceeds %d bytes", ep_name, REQ_BUF_LEN);
 		req_len = 0;
+		req_cookie_present = false;
+		req_client = NULL;
 		return -ENOMEM;
 	}
 	memcpy(req_buf + req_len, request_ctx->data, request_ctx->data_len);
@@ -170,6 +201,7 @@ static int prov_http_handler(struct http_client_ctx *client,
 
 	ensure_session();
 	req_cookie_present = false;
+	req_client = NULL;
 
 	uint8_t *out = NULL;
 	size_t outlen = 0;
@@ -250,6 +282,8 @@ int network_prov_softap_http_start(struct protocomm *pc)
 {
 	g_pc = pc;
 	req_len = 0;
+	req_cookie_present = false;
+	req_client = NULL;
 	session_valid = false;
 
 	int ret = http_server_start();

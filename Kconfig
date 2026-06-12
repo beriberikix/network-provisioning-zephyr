@@ -27,6 +27,10 @@ config NETWORK_PROV_SOFTAP
 	# HTTP_SERVER builds without TCP but its listener then fails at runtime
 	# with EPROTOTYPE, so require TCP explicitly.
 	depends on NET_TCP
+	# Session continuity relies on reading the client's Cookie header;
+	# without header capture every request would reset the session and
+	# the security-1 handshake could never complete.
+	depends on HTTP_SERVER_CAPTURE_HEADERS
 	help
 	  Carry the provisioning protocol over HTTP POST on a device-hosted
 	  access point at 192.168.4.1 — what the stock "ESP SoftAP

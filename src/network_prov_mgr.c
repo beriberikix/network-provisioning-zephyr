@@ -23,6 +23,14 @@
 
 LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL); /* registered in security0.c */
 
+/* Kconfig cannot express "at least one transport" without a recursive
+ * dependency (the transports depend on NETWORK_PROV_CORE, which the manager
+ * selects), so enforce it here.
+ */
+#if !defined(CONFIG_NETWORK_PROV_BLE) && !defined(CONFIG_NETWORK_PROV_SOFTAP)
+#error "NETWORK_PROV_MGR needs at least one transport: enable CONFIG_NETWORK_PROV_BLE and/or CONFIG_NETWORK_PROV_SOFTAP"
+#endif
+
 #define EP_VERSION  "proto-ver"
 #define EP_SESSION  "prov-session"
 #define EP_SCAN     "prov-scan"
@@ -53,6 +61,11 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 {
 	if (mgr.inited) {
 		return -EALREADY;
+	}
+	if (config.scheme != NETWORK_PROV_SCHEME_BLE &&
+	    config.scheme != NETWORK_PROV_SCHEME_SOFTAP) {
+		LOG_ERR("Unknown provisioning scheme %d", config.scheme);
+		return -EINVAL;
 	}
 	if ((config.scheme == NETWORK_PROV_SCHEME_BLE &&
 	     !IS_ENABLED(CONFIG_NETWORK_PROV_BLE)) ||
