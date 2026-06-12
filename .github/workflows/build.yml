@@ -45,16 +45,18 @@ jobs:
             -p native_sim --inline-logs -v
 
   build:
-    name: Build sample
+    name: Build ${{ matrix.sample }} (${{ matrix.board }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        sample: [wifi_prov_ble, wifi_prov_softap]
+        # RISC-V coverage via esp32c3. The original esp32 is excluded: its
+        # DRAM overflows without PSRAM (see the sample README).
+        board: [esp32s3_devkitc/esp32s3/procpu, esp32c3_devkitm]
         include:
           - board: esp32s3_devkitc/esp32s3/procpu
             toolchain: xtensa-espressif_esp32s3_zephyr-elf
-          # RISC-V coverage. The original esp32 is excluded: its DRAM
-          # overflows without PSRAM (see the sample README).
           - board: esp32c3_devkitm
             toolchain: riscv64-zephyr-elf
     steps:
@@ -92,7 +94,7 @@ jobs:
             sleep $((n * 10))
           done
 
-      - name: Build wifi_prov_ble sample
+      - name: Build sample
         run: |
           west build -b ${{ matrix.board }} \
-            network-provisioning-zephyr/samples/wifi_prov_ble
+            network-provisioning-zephyr/samples/${{ matrix.sample }}

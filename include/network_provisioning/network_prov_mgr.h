@@ -62,9 +62,14 @@ struct network_prov_event_handler {
 	void *user_data;
 };
 
-/** Provisioning scheme. Only BLE is currently supported. */
+/** Provisioning scheme (transport). */
 enum network_prov_scheme {
+	/** BLE GATT (requires CONFIG_NETWORK_PROV_BLE). */
 	NETWORK_PROV_SCHEME_BLE = 0,
+	/** HTTP on a device-hosted access point at 192.168.4.1
+	 *  (requires CONFIG_NETWORK_PROV_SOFTAP).
+	 */
+	NETWORK_PROV_SCHEME_SOFTAP = 1,
 };
 
 /** Manager configuration passed to @ref network_prov_mgr_init. */
@@ -97,20 +102,24 @@ void network_prov_mgr_deinit(void);
 int network_prov_mgr_is_provisioned(bool *provisioned);
 
 /**
- * Start the provisioning service (initialise BLE, register the GATT service
- * and begin advertising).
+ * Start the provisioning service on the configured transport: BLE (register
+ * the GATT service and advertise) or SoftAP (bring up the access point, the
+ * DHCPv4 server and the HTTP endpoints).
  *
  * @param security     Security scheme to advertise and enforce.
  * @param pop          Proof-of-possession string for NETWORK_PROV_SECURITY_1,
  *                     or NULL to disable PoP (advertises the "no_pop" cap).
  *                     Ignored for NETWORK_PROV_SECURITY_0.
- * @param service_name BLE device name (e.g. "PROV_1234"). If NULL, a name is
- *                     derived from the Bluetooth address.
+ * @param service_name BLE device name or SoftAP SSID (e.g. "PROV_1234").
+ * @param service_key  SoftAP password (8..64 characters for WPA2-PSK, or
+ *                     NULL/empty for an open AP). Ignored for BLE — pass
+ *                     NULL. Mirrors ESP-IDF's 4-argument signature.
  * @return 0 on success, negative errno otherwise.
  */
 int network_prov_mgr_start_provisioning(enum network_prov_security security,
 					const char *pop,
-					const char *service_name);
+					const char *service_name,
+					const char *service_key);
 
 /** Stop advertising and tear down the transport (keeps the manager init'd). */
 void network_prov_mgr_stop_provisioning(void);

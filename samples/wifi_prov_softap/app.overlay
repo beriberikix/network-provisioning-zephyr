@@ -1,0 +1,13 @@
+/* The esp32 Wi-Fi driver registers the AP interface against a second
+ * devicetree instance of espressif,esp32-wifi (the SoC dtsi only declares
+ * the STA one). Same pattern as zephyr's samples/net/wifi/apsta_mode.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	wifi_ap: wifi_ap {
+		compatible = "espressif,esp32-wifi";
+		status = "okay";
+	};
+};
