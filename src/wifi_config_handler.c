@@ -59,14 +59,33 @@ static void on_connect_result(struct net_mgmt_event_callback *cb)
 		wc.sta_state = WifiStationState_Connected;
 		network_prov_emit_event(NETWORK_PROV_CRED_SUCCESS, NULL);
 	} else {
-		LOG_WRN("Wi-Fi connect failed (status %d)", status->status);
+		LOG_WRN("Wi-Fi connect failed (conn_status %d)", status->conn_status);
 		wc.sta_state = WifiStationState_ConnectionFailed;
-		/* Zephyr does not always disambiguate the cause; default to an
-		 * auth error, which is the most common provisioning failure.
+
+		enum network_prov_cred_fail_reason reason;
+
+		if (status->conn_status == WIFI_STATUS_CONN_AP_NOT_FOUND) {
+			wc.fail_reason = WifiConnectFailedReason_WifiNetworkNotFound;
+			reason = NETWORK_PROV_WIFI_NETWORK_NOT_FOUND;
+		} else {
+			/* WRONG_PASSWORD, TIMEOUT and generic failures all
+			 * surface as an auth error — the two proto reasons are
+			 * all the apps can display, and a bad passphrase is by
+			 * far the most common cause of the rest.
+			 */
+			wc.fail_reason = WifiConnectFailedReason_AuthError;
+			reason = NETWORK_PROV_WIFI_AUTH_ERROR;
+		}
+
+		/* Drop the credentials persisted by ApplyWifiConfig: they did
+		 * not work, and keeping them would make the device boot
+		 * "provisioned" (and not advertise) after a power cycle even
+		 * though provisioning never succeeded. An in-session retry
+		 * stores fresh credentials on the next apply.
 		 */
-		wc.fail_reason = WifiConnectFailedReason_AuthError;
-		enum network_prov_cred_fail_reason reason =
-			NETWORK_PROV_WIFI_AUTH_ERROR;
+		(void)wifi_credentials_delete_by_ssid((const char *)wc.ssid,
+						      wc.ssid_len);
+
 		network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
 	}
 }
@@ -199,10 +218,25 @@ static Status do_apply_config(void)
 
 	ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
 	if (ret != 0) {
+		/* The request was rejected synchronously (e.g. -EINVAL for a
+		 * PSK shorter than 8 characters), so no connect-result event
+		 * will ever arrive. Surface it exactly like an asynchronous
+		 * connect failure — failed state for the status polls, the
+		 * CRED_FAIL application event and credential cleanup — and
+		 * still answer the Apply request with success, so the apps go
+		 * through their normal status-poll/retry flow instead of
+		 * showing a generic error without a retry option.
+		 */
 		LOG_ERR("Connect request failed: %d", ret);
 		wc.sta_state = WifiStationState_ConnectionFailed;
 		wc.fail_reason = WifiConnectFailedReason_AuthError;
-		return Status_InternalError;
+
+		(void)wifi_credentials_delete_by_ssid((const char *)wc.ssid,
+						      wc.ssid_len);
+
+		enum network_prov_cred_fail_reason reason =
+			NETWORK_PROV_WIFI_AUTH_ERROR;
+		network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
 	}
 	return Status_Success;
 }

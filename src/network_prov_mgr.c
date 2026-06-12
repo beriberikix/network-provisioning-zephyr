@@ -106,7 +106,8 @@ static void build_version_json(enum network_prov_security security, const char *
 		      (pop == NULL || pop[0] == '\0');
 
 	snprintf(mgr.version_json, sizeof(mgr.version_json),
-		 "{\"prov\":{\"ver\":\"v1.1\",\"sec_ver\":%d,\"cap\":[\"wifi_scan\"%s]}}",
+		 "{\"prov\":{\"ver\":\"v1.1\",\"sec_ver\":%d,"
+		 "\"cap\":[\"wifi_prov\",\"wifi_scan\"%s]}}",
 		 sec_ver, no_pop ? ",\"no_pop\"" : "");
 }
 
