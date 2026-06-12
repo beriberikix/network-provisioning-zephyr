@@ -99,6 +99,22 @@ int network_prov_mgr_is_provisioned(bool *provisioned)
 	return 0;
 }
 
+int network_prov_mgr_reset_wifi_provisioning(void)
+{
+	if (!mgr.inited) {
+		return -EPERM;
+	}
+
+	int ret = wifi_credentials_delete_all();
+
+	if (ret != 0) {
+		LOG_ERR("Failed to erase stored credentials: %d", ret);
+		return ret;
+	}
+	LOG_INF("Stored Wi-Fi credentials erased");
+	return 0;
+}
+
 static void build_version_json(enum network_prov_security security, const char *pop)
 {
 	int sec_ver = (security == NETWORK_PROV_SECURITY_1) ? 1 : 0;

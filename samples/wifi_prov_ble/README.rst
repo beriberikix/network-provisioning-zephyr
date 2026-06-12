@@ -10,7 +10,12 @@ Advertises an Espressif-compatible BLE provisioning peripheral. The stock
 **ESP BLE Provisioning** apps (Android/iOS) connect to it, run the security
 handshake, optionally scan for access points, and hand over Wi-Fi credentials.
 Credentials are persisted via the native ``wifi_credentials`` subsystem, so on
-the next boot the device reconnects automatically instead of advertising.
+the next boot the device reconnects automatically instead of advertising. If
+the stored network stays unreachable (5 attempts with backoff), the sample
+falls back to provisioning mode for reachability while keeping the
+credentials — they are retried on the next boot, and never erased
+automatically (call ``network_prov_mgr_reset_wifi_provisioning()`` from e.g.
+a factory-reset button for an explicit wipe).
 
 Requirements
 ************

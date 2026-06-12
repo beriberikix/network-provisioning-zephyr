@@ -118,6 +118,17 @@ void network_prov_mgr_stop_provisioning(void);
 /** Block until provisioning completes (NETWORK_PROV_CRED_SUCCESS). */
 void network_prov_mgr_wait(void);
 
+/**
+ * Erase all stored Wi-Fi credentials; the device reverts to unprovisioned.
+ *
+ * Mirrors ESP-IDF's network_prov_mgr_reset_wifi_provisioning(). Credentials
+ * are never erased automatically on connection failures — this is meant for
+ * explicit application actions such as a factory-reset button.
+ *
+ * @return 0 on success, negative errno otherwise.
+ */
+int network_prov_mgr_reset_wifi_provisioning(void);
+
 #ifdef __cplusplus
 }
 #endif
