@@ -1,0 +1,13 @@
+tests:
+  network_provisioning.bsim.ble_e2e:
+    build_only: true
+    harness: bsim
+    platform_allow:
+      - nrf52_bsim/native
+    integration_platforms:
+      - nrf52_bsim/native
+    tags:
+      - network_provisioning
+      - bluetooth
+    harness_config:
+      bsim_exe_name: network_provisioning_bsim_ble_e2e_prj_conf

@@ -44,6 +44,53 @@ jobs:
           west twister -T network-provisioning-zephyr/tests \
             -p native_sim --inline-logs -v
 
+  bsim:
+    name: BLE end-to-end (BabbleSim)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          # nrf52_bsim is a POSIX board built with the host compiler; the SDK
+          # still provides host tools.
+          toolchains: x86_64-zephyr-elf
+
+      - name: Install nanopb generator dependencies
+        run: pip install grpcio-tools==1.68.0
+
+      - name: Build BabbleSim
+        # The physical-layer simulator and HW models are a separate manifest
+        # group (filtered out by default); enable it, fetch and build them.
+        run: |
+          export BSIM_OUT_PATH="$(west topdir)/tools/bsim"
+          export BSIM_COMPONENTS_PATH="$BSIM_OUT_PATH/components"
+          west config manifest.group-filter -- +babblesim
+          west update
+          make -C "$BSIM_OUT_PATH" everything -j "$(nproc)"
+
+      - name: Build and run the BLE end-to-end simulations
+        run: |
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
+          export BSIM_OUT_PATH="$(west topdir)/tools/bsim"
+          export BSIM_COMPONENTS_PATH="$BSIM_OUT_PATH/components"
+          export BOARD=nrf52_bsim/native
+          export EXECUTE_TIMEOUT=120
+          repo=network-provisioning-zephyr
+          "$repo/tests/bsim/compile.sh"
+          "$repo/tests/bsim/ble_e2e/test_scripts/provision_success.sh"
+          "$repo/tests/bsim/ble_e2e/test_scripts/provision_wrong_password.sh"
+
   build:
     name: Build ${{ matrix.sample }} (${{ matrix.board }})
     runs-on: ubuntu-latest

@@ -1,0 +1,28 @@
+# Fake (simulated) Wi-Fi offload backend for tests
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config NETWORK_PROV_FAKE_WIFI
+	bool "Fake (simulated) Wi-Fi driver for tests"
+	depends on NETWORKING
+	select WIFI
+	select WIFI_USE_NATIVE_NETWORKING
+	select NET_L2_ETHERNET
+	select NET_L2_WIFI_MGMT
+	help
+	  A hardware-less Wi-Fi offload network interface for native_sim and
+	  nrf52_bsim. It registers a WIFI-type interface and answers
+	  scan/connect/iface_status/ap_enable with programmable, deterministic
+	  results so the full provisioning manager can be exercised in simulation,
+	  including failure injection. Test-only: the real samples never enable it.
+
+if NETWORK_PROV_FAKE_WIFI
+
+config NETWORK_PROV_FAKE_WIFI_MAX_AP
+	int "Maximum number of canned scan APs"
+	default 8
+	help
+	  Upper bound on the canned access-point list the fake backend reports
+	  from a scan.
+
+endif # NETWORK_PROV_FAKE_WIFI
