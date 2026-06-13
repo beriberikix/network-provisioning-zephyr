@@ -13,6 +13,7 @@
 #include "babblekit/testcase.h"
 
 #include "network_provisioning/network_prov_mgr.h"
+#include "network_provisioning/scheme_ble.h"
 #include "network_provisioning/test/fake_wifi.h"
 
 #include "common.h"
@@ -79,6 +80,22 @@ static void dut_run(enum wifi_conn_status connect_outcome,
 	fake_wifi_set_next_connect_result(connect_outcome);
 
 	TEST_ASSERT(network_prov_mgr_init(cfg) == 0, "manager init failed");
+
+	/* Tier-1 parity APIs under test: a custom BLE service UUID + mfg data
+	 * (the tester verifies both) and an app-info section in proto-ver.
+	 */
+	static const uint8_t svc_uuid[16] = {PROV_TEST_SVC_UUID};
+	static const uint8_t mfg[] = PROV_TEST_MFG_DATA;
+	static const char *const app_caps[] = {PROV_TEST_APP_CAP};
+
+	TEST_ASSERT(network_prov_scheme_ble_set_service_uuid(svc_uuid) == 0,
+		    "set_service_uuid failed");
+	TEST_ASSERT(network_prov_scheme_ble_set_mfg_data(mfg, sizeof(mfg)) == 0,
+		    "set_mfg_data failed");
+	TEST_ASSERT(network_prov_mgr_set_app_info(PROV_TEST_APP_LABEL, PROV_TEST_APP_VER,
+						  app_caps, ARRAY_SIZE(app_caps)) == 0,
+		    "set_app_info failed");
+
 	TEST_ASSERT(network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, PROV_TEST_POP,
 							PROV_TEST_NAME, NULL) == 0,
 		    "start_provisioning failed");

@@ -218,12 +218,10 @@ static int run_provisioning(void)
 	/* Block until the device connects with the supplied credentials. */
 	network_prov_mgr_wait();
 
-	/* Keep the provisioning service alive briefly: the app still polls
-	 * GetWifiStatus over the AP to learn the result.
+	/* The manager auto-stops the service a grace period after success
+	 * (CONFIG_NETWORK_PROV_AUTOSTOP_TIMEOUT_MS), so the app still has time
+	 * to poll GetWifiStatus over the AP before it is torn down.
 	 */
-	k_sleep(K_SECONDS(30));
-	network_prov_mgr_stop_provisioning();
-
 	LOG_INF("Provisioning complete");
 	return 0;
 }
