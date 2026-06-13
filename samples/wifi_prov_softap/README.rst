@@ -63,14 +63,23 @@ Defaults live in ``src/main.c`` and ``prj.conf``:
   ``NULL`` for an open AP.
 * ``CONFIG_HTTP_SERVER_STACK_SIZE`` — must stay at 8192 or larger: the
   security-1 crypto runs in the HTTP server thread via the endpoint handlers.
+* ``.wifi_conn_attempts = 5`` in the manager config retries transient connect
+  failures: while attempts remain the app's status polls report *Connecting*
+  with the attempts remaining, and failure is only reported (and the staged
+  credentials dropped) after the final attempt.
 * ``CONFIG_HEAP_MEM_POOL_SIZE`` — the esp32 Wi-Fi driver allocates from the
   kernel heap and AP+STA mode needs real headroom; with too little, RX
   allocations fail as soon as a station associates.
 * ``CONFIG_ZVFS_EVENTFD_MAX=2`` — the DHCPv4 server's socket service and the
   HTTP server each need one eventfd; with the default of 1 the HTTP server
   fails to start and silently restart-loops.
-* ``CONFIG_HTTP_SERVER_MAX_CLIENTS=3`` — when the device joins a Wi-Fi
-  network on a different channel than the AP, clients connected to the AP
-  briefly glitch (AP/STA share one radio). The app's TCP connection dies in
-  the shift and its replacement must not be blocked behind the stale socket,
-  or the final status polls time out in the app.
+* ``CONFIG_HTTP_SERVER_MAX_CLIENTS=3`` — the stock Android app opens a fresh
+  connection for each status poll while a previous keep-alive one still
+  lingers, so several connections are open at once; one slot would block the
+  new poll behind the stale socket for the whole inactivity timeout.
+* ``CONFIG_ZVFS_POLL_MAX=8`` — the HTTP server polls ``1 eventfd + 1 listener
+  + MAX_CLIENTS`` sockets at once. With the default poll budget of 3 the
+  ``zsock_poll()`` fails with ``ENOMEM`` as soon as a second client connects;
+  the extra client then gets an empty response, which the app feeds straight
+  into its AES cipher and reports as **"Null input buffer"**. Must be at least
+  ``2 + MAX_CLIENTS``.
