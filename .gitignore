@@ -4,3 +4,6 @@ build/
 __pycache__/
 *.pyc
 .west/
+
+# native_sim sim-flash backing file (written when running a DUT locally)
+flash.bin

@@ -51,6 +51,18 @@ void fake_wifi_set_next_connect_result(enum wifi_conn_status status);
  */
 void fake_wifi_set_next_connect_sync_error(int errnum);
 
+/**
+ * Switch the backend to credential-matching mode: the outcome of each connect
+ * is derived from the requested credentials rather than a pre-programmed
+ * status. With @p ssid / @p pass configured as the one "real" network:
+ *   - requested SSID not among the canned scan APs -> AP_NOT_FOUND;
+ *   - SSID matches a canned AP but the passphrase differs -> WRONG_PASSWORD;
+ *   - SSID and passphrase both match -> SUCCESS.
+ * This lets a host-side client (esp_prov) drive every outcome purely through
+ * the credentials it sends. Pass NULL/empty @p ssid to leave this mode.
+ */
+void fake_wifi_set_expected_credentials(const char *ssid, const char *pass);
+
 /** Reset all programmed state: empty scan list, connect succeeds, no sync error. */
 void fake_wifi_reset(void);
 

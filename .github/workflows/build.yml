@@ -91,6 +91,50 @@ jobs:
           "$repo/tests/bsim/ble_e2e/test_scripts/provision_success.sh"
           "$repo/tests/bsim/ble_e2e/test_scripts/provision_wrong_password.sh"
 
+  esp_prov:
+    name: esp_prov SoftAP end-to-end (native_sim)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          toolchains: x86_64-zephyr-elf
+
+      - name: Install Python dependencies
+        # grpcio-tools: nanopb generator + protoc for esp_prov's *_pb2.py.
+        # cryptography: esp_prov's security-1 (X25519/AES). protobuf runtime.
+        run: pip install grpcio-tools==1.68.0 protobuf cryptography
+
+      - name: Build the SoftAP DUT (native_sim)
+        run: |
+          west build -b native_sim \
+            network-provisioning-zephyr/tests/esp_prov/dut
+
+      - name: Drive the real esp_prov tool against the DUT
+        run: |
+          repo=network-provisioning-zephyr
+          eval "$(bash "$repo/tests/esp_prov/setup.sh" "$RUNNER_TEMP/esp_prov")"
+          export DUT_EXE="$PWD/build/zephyr/zephyr.exe"
+          export PYTHON="$(which python3)"
+          # ubuntu-latest (24.04) restricts unprivileged user namespaces via
+          # AppArmor; relax it so `unshare -rn` can create the TAP without root.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          unshare -rn env \
+            ESP_PROV="$ESP_PROV" IDF_PATH="$IDF_PATH" \
+            DUT_EXE="$DUT_EXE" PYTHON="$PYTHON" \
+            bash "$repo/tests/esp_prov/run.sh"
+
   build:
     name: Build ${{ matrix.sample }} (${{ matrix.board }})
     runs-on: ubuntu-latest

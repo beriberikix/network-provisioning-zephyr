@@ -155,11 +155,17 @@ network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_wrong_pass
 
 [bsim]: https://babblesim.github.io/
 
+An **esp_prov SoftAP end-to-end test** ([`tests/esp_prov`](tests/esp_prov))
+drives Espressif's real `esp_prov` client against a `native_sim` build over a
+host Ethernet TAP, asserting the success, wrong-password and unknown-SSID
+outcomes — verifying interoperability with the actual upstream tool, not just an
+in-tree client. See its [README](tests/esp_prov/README.md) to run it locally.
+
 CI runs all of the above — the `native_sim` suites, the BabbleSim BLE
-end-to-end test, and `esp32s3_devkitc` and `esp32c3_devkitm` builds of both
-samples — against the Zephyr release pinned in [`west.yml`](west.yml) on every
-push and pull request; moving to a newer stable release is a one-line bump of
-that pin.
+end-to-end test, the esp_prov SoftAP end-to-end test, and `esp32s3_devkitc` and
+`esp32c3_devkitm` builds of both samples — against the Zephyr release pinned in
+[`west.yml`](west.yml) on every push and pull request; moving to a newer stable
+release is a one-line bump of that pin.
 
 ## Using it as a module in an existing workspace
 
