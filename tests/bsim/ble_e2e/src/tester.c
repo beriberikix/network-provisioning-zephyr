@@ -41,8 +41,10 @@
 #define WAIT_TIME_S 30
 #define WAIT_TIME   (WAIT_TIME_S * 1e6)
 
-#define PROV_SERVICE_UUID_VAL \
-	BT_UUID_128_ENCODE(0x021a9004, 0x0382, 0x4aea, 0xbff4, 0x6b3f1c5adfb4)
+/* The DUT overrides the service UUID via network_prov_scheme_ble_set_service_uuid();
+ * discovering by it proves the override took effect.
+ */
+#define PROV_SERVICE_UUID_VAL PROV_TEST_SVC_UUID
 
 static struct bt_conn *g_conn;
 
@@ -231,7 +233,7 @@ static void discover_endpoints(void)
 static void check_proto_ver(void)
 {
 	uint16_t h = ep_handle("proto-ver");
-	uint8_t resp[128];
+	uint8_t resp[192];
 	size_t n = 0;
 
 	TEST_ASSERT(h != 0, "proto-ver endpoint missing");
@@ -245,6 +247,11 @@ static void check_proto_ver(void)
 	TEST_PRINT("tester: proto-ver = %s", resp);
 	TEST_ASSERT(strstr((char *)resp, "sec_ver") != NULL,
 		    "proto-ver capabilities missing sec_ver");
+	/* The app-info section set by the DUT must be present (set_app_info). */
+	TEST_ASSERT(strstr((char *)resp, "\"" PROV_TEST_APP_LABEL "\"") != NULL,
+		    "proto-ver missing app-info label");
+	TEST_ASSERT(strstr((char *)resp, "\"" PROV_TEST_APP_CAP "\"") != NULL,
+		    "proto-ver missing app-info capability");
 }
 
 static void do_scan(struct prov_client *c)
@@ -393,12 +400,60 @@ static int poll_status(struct prov_client *c)
 	return WifiStationState_Connecting;
 }
 
+static bool mfg_seen;
+
+static bool mfg_ad_cb(struct bt_data *data, void *user_data)
+{
+	static const uint8_t want[] = PROV_TEST_MFG_DATA;
+
+	ARG_UNUSED(user_data);
+	if (data->type == BT_DATA_MANUFACTURER_DATA &&
+	    data->data_len == sizeof(want) &&
+	    memcmp(data->data, want, sizeof(want)) == 0) {
+		mfg_seen = true;
+		return false;
+	}
+	return true;
+}
+
+static void mfg_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
+			struct net_buf_simple *ad)
+{
+	ARG_UNUSED(addr);
+	ARG_UNUSED(rssi);
+	ARG_UNUSED(type);
+	bt_data_parse(ad, mfg_ad_cb, NULL);
+}
+
+/* Active-scan and confirm the DUT advertises the manufacturer data set via
+ * network_prov_scheme_ble_set_mfg_data() (carried in the scan response).
+ */
+static void verify_mfg_data(void)
+{
+	struct bt_le_scan_param param = {
+		.type = BT_LE_SCAN_TYPE_ACTIVE,
+		.options = BT_LE_SCAN_OPT_NONE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL,
+		.window = BT_GAP_SCAN_FAST_WINDOW,
+	};
+
+	mfg_seen = false;
+	TEST_ASSERT(bt_le_scan_start(&param, mfg_scan_cb) == 0, "mfg scan start failed");
+	for (int i = 0; i < 50 && !mfg_seen; i++) {
+		k_sleep(K_MSEC(100));
+	}
+	(void)bt_le_scan_stop();
+	TEST_ASSERT(mfg_seen, "manufacturer data not found in scan response");
+}
+
 static void tester_run(bool expect_success)
 {
 	bt_addr_le_t addr;
 	int err;
 
 	TEST_ASSERT(bt_enable(NULL) == 0, "bt_enable failed");
+
+	verify_mfg_data();
 
 	err = bt_testlib_scan_find_name(&addr, PROV_TEST_NAME);
 	TEST_ASSERT(err == 0, "could not find '%s' (err %d)", PROV_TEST_NAME, err);

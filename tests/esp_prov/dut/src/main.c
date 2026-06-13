@@ -105,6 +105,10 @@ int main(void)
 		LOG_ERR("manager init failed");
 		return 1;
 	}
+	/* Keep the service up across all esp_prov scenarios (the test drives
+	 * success and several failures against one long-running instance).
+	 */
+	(void)network_prov_mgr_disable_auto_stop(0);
 	if (network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, PROV_POP,
 						AP_NAME, NULL) != 0) {
 		LOG_ERR("start_provisioning failed");

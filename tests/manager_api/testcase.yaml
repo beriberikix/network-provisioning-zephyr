@@ -1,0 +1,9 @@
+tests:
+  network_provisioning.manager_api:
+    tags:
+      - network_provisioning
+      - wifi
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

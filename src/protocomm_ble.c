@@ -39,6 +39,57 @@ LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 
 static struct bt_uuid_128 service_uuid = BT_UUID_INIT_128(PROV_SERVICE_UUID_VAL);
 
+/* Optional manufacturer-specific data added to the scan response (set via
+ * network_prov_scheme_ble_set_mfg_data); apps often match devices on it.
+ *
+ * The scan response already carries the 128-bit service UUID AD structure
+ * (1 + 1 + 16 = 18 B). Of the 31-byte PDU that leaves 31 - 18 - 2 (the mfg AD
+ * header) = 11 bytes for the manufacturer payload.
+ */
+#define MFG_DATA_MAX 11
+static uint8_t mfg_data[MFG_DATA_MAX];
+static size_t mfg_data_len;
+
+/* True once the GATT service has been registered (provisioning started); the
+ * BLE customization setters are rejected after this point.
+ */
+static bool svc_registered;
+
+int network_prov_scheme_ble_set_service_uuid(const uint8_t uuid128[16])
+{
+	if (uuid128 == NULL) {
+		return -EINVAL;
+	}
+	/* The UUID is consumed by build_service()/build_adv() at start; changing
+	 * it after the service is registered would desync the characteristic
+	 * UUIDs and the live advertising payload.
+	 */
+	if (svc_registered) {
+		return -EPERM;
+	}
+	memcpy(service_uuid.val, uuid128, sizeof(service_uuid.val));
+	return 0;
+}
+
+int network_prov_scheme_ble_set_mfg_data(const uint8_t *data, size_t len)
+{
+	if (len > MFG_DATA_MAX) {
+		return -ENOMEM;
+	}
+	if (len > 0 && data == NULL) {
+		return -EINVAL;
+	}
+	if (svc_registered) {
+		/* The advertising payload is built only at start. */
+		return -EPERM;
+	}
+	mfg_data_len = len;
+	if (len > 0) {
+		memcpy(mfg_data, data, len);
+	}
+	return 0;
+}
+
 /* The BT_UUID_GATT_* helper macros expand to compound literals, which only
  * have static storage duration at file scope. This table is built inside
  * build_service(), so using them there would leave the registered service
@@ -62,7 +113,6 @@ static struct bt_gatt_chrc ep_chrc[MAX_EP];
 static struct ep_io ep_io[MAX_EP];
 static struct bt_gatt_attr attrs[1 + 3 * MAX_EP];
 static struct bt_gatt_service prov_svc;
-static bool svc_registered;
 
 /* Advertising payload is filled in at start() with the runtime device name so
  * the apps can match the configured "PROV_" name prefix.
@@ -70,7 +120,8 @@ static bool svc_registered;
 static const uint8_t ad_flags = BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR;
 static char adv_name[32];
 static struct bt_data ad[2];
-static struct bt_data sd[1];
+static struct bt_data sd[2];
+static size_t sd_len;
 
 static void build_adv(const char *name)
 {
@@ -90,6 +141,15 @@ static void build_adv(const char *name)
 	sd[0].type = BT_DATA_UUID128_ALL;
 	sd[0].data_len = sizeof(service_uuid.val);
 	sd[0].data = service_uuid.val;
+	sd_len = 1;
+
+	/* Optional manufacturer-specific data (e.g. for app-side matching). */
+	if (mfg_data_len > 0) {
+		sd[1].type = BT_DATA_MANUFACTURER_DATA;
+		sd[1].data_len = mfg_data_len;
+		sd[1].data = mfg_data;
+		sd_len = 2;
+	}
 }
 
 static ssize_t read_ep(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -221,7 +281,7 @@ static void recycled(void)
 	}
 
 	int ret = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
-				  sd, ARRAY_SIZE(sd));
+				  sd, sd_len);
 	if (ret && ret != -EALREADY) {
 		LOG_ERR("failed to restart advertising: %d", ret);
 	}
@@ -264,7 +324,7 @@ int network_prov_ble_start(struct protocomm *pc, const char *device_name)
 	build_adv(device_name);
 
 	ret = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
-			      sd, ARRAY_SIZE(sd));
+			      sd, sd_len);
 	if (ret) {
 		LOG_ERR("advertising start failed: %d", ret);
 		return ret;

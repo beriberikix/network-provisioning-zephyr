@@ -101,6 +101,29 @@ during provisioning before reporting failure — while retrying, status polls
 answer `Connecting` with the attempts remaining (`WifiAttemptFailed`), matching
 upstream's `wifi_conn_attempts` behavior. `0` keeps single-attempt semantics.
 
+Additional upstream-parity manager APIs:
+
+```c
+/* Advertise an app section in proto-ver (ver + extra capabilities). */
+network_prov_mgr_set_app_info("myapp", "1.0", caps, ARRAY_SIZE(caps));
+
+/* By default the service auto-stops a grace period after success
+ * (CONFIG_NETWORK_PROV_AUTOSTOP_TIMEOUT_MS); opt out to manage teardown yourself. */
+network_prov_mgr_disable_auto_stop(0);
+network_prov_mgr_is_sm_idle();                  /* no session active */
+
+/* Programmatic (headless) provisioning + post-failure / re-provision resets. */
+network_prov_mgr_configure_wifi_sta("ssid", "passphrase");
+network_prov_mgr_reset_wifi_sm_state_on_failure();
+network_prov_mgr_reset_wifi_sm_state_for_reprovision();
+```
+
+For the BLE transport, `<network_provisioning/scheme_ble.h>` adds
+`network_prov_scheme_ble_set_service_uuid()` and
+`network_prov_scheme_ble_set_mfg_data()` (call before `start_provisioning`) to
+override the 128-bit GATT service UUID and add manufacturer data to the scan
+response, e.g. for app-side device matching.
+
 ## Quick start
 
 ```sh
