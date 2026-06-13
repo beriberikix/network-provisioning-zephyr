@@ -180,6 +180,15 @@ static int connect_to_server(void)
 		k_sleep(K_MSEC(20));
 	}
 	zassert_true(sock >= 0, "connect failed: %d", -errno);
+
+	/* Bound every read so a wedged server (e.g. a poll-budget regression
+	 * that leaves a connection unserved) fails the test cleanly instead of
+	 * blocking forever.
+	 */
+	struct zsock_timeval tv = { .tv_sec = 4, .tv_usec = 0 };
+
+	(void)zsock_setsockopt(sock, ZSOCK_SOL_SOCKET, ZSOCK_SO_RCVTIMEO,
+			       &tv, sizeof(tv));
 	return sock;
 }
 
@@ -599,6 +608,55 @@ ZTEST(protocomm_http, test_04_keepalive_like_esp_prov)
 
 	client_destroy(&c);
 	zsock_close(sock);
+}
+
+ZTEST(protocomm_http, test_05_concurrent_connections)
+{
+	/* The Android app's HttpURLConnection opens a fresh connection for the
+	 * next status poll while a previous keep-alive one still lingers, so
+	 * the server must service several connections at once. The server
+	 * polls (1 eventfd + 1 listener + MAX_CLIENTS) sockets in a single
+	 * zsock_poll(); if CONFIG_ZVFS_POLL_MAX is smaller than that, the poll
+	 * fails with ENOMEM once a second client connects and that client gets
+	 * an empty/closed response — which the stock app feeds to
+	 * Cipher.update(null) ("Null input buffer").
+	 *
+	 * Hold connection A open (keep-alive) while opening B and C, so the
+	 * server's poll set grows to eventfd + listener + 3 clients, then drive
+	 * a request on each and confirm all are served.
+	 */
+	uint8_t resp[128];
+	int a = connect_to_server();
+	int rlen = http_post_keepalive(a, "/proto-ver", (const uint8_t *)"-", 1,
+				       false, resp, sizeof(resp));
+
+	zassert_equal(rlen, (int)strlen(VERSION_JSON), "connection A");
+
+	int b = connect_to_server(); /* A still open: poll set now has 2 clients */
+
+	rlen = http_post_keepalive(b, "/proto-ver", (const uint8_t *)"-", 1,
+				   false, resp, sizeof(resp));
+	zassert_equal(rlen, (int)strlen(VERSION_JSON),
+		      "second concurrent connection not served (poll budget?)");
+
+	int c = connect_to_server(); /* A and B still open: 3 clients */
+
+	rlen = http_post_keepalive(c, "/proto-ver", (const uint8_t *)"-", 1,
+				   false, resp, sizeof(resp));
+	zassert_equal(rlen, (int)strlen(VERSION_JSON),
+		      "third concurrent connection not served (poll budget?)");
+
+	/* A and B must still work after the others joined the poll set. */
+	rlen = http_post_keepalive(a, "/proto-ver", (const uint8_t *)"-", 1,
+				   false, resp, sizeof(resp));
+	zassert_equal(rlen, (int)strlen(VERSION_JSON), "connection A after B/C");
+	rlen = http_post_keepalive(b, "/proto-ver", (const uint8_t *)"-", 1,
+				   false, resp, sizeof(resp));
+	zassert_equal(rlen, (int)strlen(VERSION_JSON), "connection B after C");
+
+	zsock_close(a);
+	zsock_close(b);
+	zsock_close(c);
 }
 
 ZTEST_SUITE(protocomm_http, NULL, suite_setup, NULL, NULL, suite_teardown);

@@ -78,6 +78,16 @@ struct network_prov_mgr_config {
 	enum network_prov_scheme scheme;
 	/** Application event handler (may have a NULL callback). */
 	struct network_prov_event_handler app_event_handler;
+	/**
+	 * Maximum Wi-Fi connection attempts per provisioning try. While
+	 * attempts remain, a failed connect is retried automatically and
+	 * status polls report Connecting with the attempts remaining
+	 * (WifiAttemptFailed), matching upstream ESP-IDF's
+	 * wifi_conn_attempts (kept flat here instead of upstream's nested
+	 * network_prov_wifi_conn_cfg_t). 0 means a single attempt whose
+	 * failure is reported immediately.
+	 */
+	uint32_t wifi_conn_attempts;
 };
 
 /**
@@ -123,6 +133,16 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 
 /** Stop advertising and tear down the transport (keeps the manager init'd). */
 void network_prov_mgr_stop_provisioning(void);
+
+/**
+ * Number of Wi-Fi connection attempts left for the credentials currently
+ * being tried (wifi_conn_attempts minus completed attempts). Mirrors
+ * ESP-IDF's network_prov_mgr_get_wifi_remaining_conn_attempts().
+ *
+ * @param attempts_remaining Set to the remaining attempt count.
+ * @return 0 on success, -EINVAL on NULL or if the manager is not active.
+ */
+int network_prov_mgr_get_wifi_remaining_conn_attempts(uint32_t *attempts_remaining);
 
 /** Block until provisioning completes (NETWORK_PROV_CRED_SUCCESS). */
 void network_prov_mgr_wait(void);

@@ -73,6 +73,10 @@ Defaults live in ``src/main.c`` and ``prj.conf``:
   for 30 more seconds before stopping it. The app is still connected over BLE
   at that point and polls the final status; stopping immediately makes the
   apps report a failure even though Wi-Fi connected.
+* ``.wifi_conn_attempts = 5`` in the manager config retries transient connect
+  failures: while attempts remain the app's status polls report *Connecting*
+  with the attempts remaining, and failure is only reported (and the staged
+  credentials dropped) after the final attempt.
 
 Sample output
 *************

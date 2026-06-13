@@ -254,6 +254,10 @@ int main(void)
 			.event_cb = prov_event,
 			.user_data = NULL,
 		},
+		/* Retry transient connect failures before reporting back to
+		 * the app (upstream example default).
+		 */
+		.wifi_conn_attempts = 5,
 	};
 
 	int ret = network_prov_mgr_init(config);
