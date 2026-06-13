@@ -86,3 +86,6 @@ module-str = network provisioning
 source "subsys/logging/Kconfig.template.log_config"
 
 endif # NETWORK_PROV_CORE
+
+# Test-only simulated Wi-Fi backend (never enabled by the real samples).
+rsource "sim/wifi/Kconfig"

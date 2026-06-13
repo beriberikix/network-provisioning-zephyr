@@ -67,3 +67,7 @@ if(CONFIG_NETWORK_PROV_CORE)
     )
   endif()
 endif()
+
+# Test-only simulated Wi-Fi offload backend, built as its own library so it
+# stays out of the real samples (which never set CONFIG_NETWORK_PROV_FAKE_WIFI).
+add_subdirectory_ifdef(CONFIG_NETWORK_PROV_FAKE_WIFI sim/wifi)
