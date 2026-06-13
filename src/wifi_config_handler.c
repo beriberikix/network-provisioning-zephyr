@@ -411,7 +411,7 @@ int network_prov_wifi_config_set_and_apply(const uint8_t *ssid, size_t ssid_len,
 					   const uint8_t *psk, size_t psk_len)
 {
 	if (ssid == NULL || ssid_len == 0 || ssid_len > SSID_MAX ||
-	    psk_len > PASS_MAX) {
+	    psk_len > PASS_MAX || (psk_len > 0 && psk == NULL)) {
 		return -EINVAL;
 	}
 

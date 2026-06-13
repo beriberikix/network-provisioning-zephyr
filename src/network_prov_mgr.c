@@ -103,6 +103,7 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 	mgr.wifi_conn_attempts = config.wifi_conn_attempts;
 	mgr.auto_stop = true;
 	mgr.cleanup_delay_ms = 0;
+	mgr.app_info_json[0] = '\0'; /* don't leak a prior cycle's app-info */
 	k_sem_init(&mgr.done, 0, 1);
 	k_work_init_delayable(&mgr.teardown_work, teardown_work_fn);
 
@@ -129,7 +130,10 @@ void network_prov_mgr_deinit(void)
 	if (!mgr.inited) {
 		return;
 	}
-	(void)k_work_cancel_delayable(&mgr.teardown_work);
+	struct k_work_sync sync;
+
+	/* _sync so a teardown_work already running cannot race do_teardown(). */
+	(void)k_work_cancel_delayable_sync(&mgr.teardown_work, &sync);
 	if (mgr.started) {
 		do_teardown();
 	}
@@ -162,6 +166,21 @@ int network_prov_mgr_reset_wifi_provisioning(void)
 	return 0;
 }
 
+/* Reject characters that would break out of a JSON string literal, so the
+ * concatenated proto-ver JSON stays well-formed regardless of caller input.
+ */
+static bool json_token_ok(const char *s)
+{
+	for (; *s != '\0'; s++) {
+		unsigned char c = (unsigned char)*s;
+
+		if (c < 0x20 || c == '"' || c == '\\') {
+			return false;
+		}
+	}
+	return true;
+}
+
 int network_prov_mgr_set_app_info(const char *label, const char *version,
 				  const char *const *capabilities,
 				  size_t capabilities_count)
@@ -169,17 +188,27 @@ int network_prov_mgr_set_app_info(const char *label, const char *version,
 	if (label == NULL || label[0] == '\0' || version == NULL) {
 		return -EINVAL;
 	}
+	if (capabilities_count > 0 && capabilities == NULL) {
+		return -EINVAL;
+	}
+	if (!mgr.inited) {
+		return -EPERM;
+	}
 	if (mgr.started) {
 		/* The version JSON is rendered at start_provisioning() time. */
 		return -EPERM;
 	}
-	if (capabilities_count > 0 && capabilities == NULL) {
+	if (!json_token_ok(label) || !json_token_ok(version)) {
 		return -EINVAL;
+	}
+	for (size_t i = 0; i < capabilities_count; i++) {
+		if (capabilities[i] == NULL || !json_token_ok(capabilities[i])) {
+			return -EINVAL;
+		}
 	}
 
 	/* Render "<label>":{"ver":"<version>","cap":["c0","c1",...]}, — the
 	 * trailing comma lets build_version_json() splice it before "prov".
-	 * Tokens are assumed JSON-safe (same convention as the "prov" caps).
 	 */
 	int n = snprintf(mgr.app_info_json, sizeof(mgr.app_info_json),
 			 "\"%s\":{\"ver\":\"%s\",\"cap\":[", label, version);
@@ -190,9 +219,6 @@ int network_prov_mgr_set_app_info(const char *label, const char *version,
 	size_t off = n;
 
 	for (size_t i = 0; i < capabilities_count; i++) {
-		if (capabilities[i] == NULL) {
-			goto overflow;
-		}
 		n = snprintf(mgr.app_info_json + off, sizeof(mgr.app_info_json) - off,
 			     "%s\"%s\"", (i == 0) ? "" : ",", capabilities[i]);
 		if (n < 0 || (size_t)n >= sizeof(mgr.app_info_json) - off) {
@@ -351,7 +377,10 @@ void network_prov_mgr_stop_provisioning(void)
 	if (!mgr.started) {
 		return;
 	}
-	(void)k_work_cancel_delayable(&mgr.teardown_work);
+	struct k_work_sync sync;
+
+	/* _sync so a teardown_work already running cannot race do_teardown(). */
+	(void)k_work_cancel_delayable_sync(&mgr.teardown_work, &sync);
 	if (mgr.cleanup_delay_ms > 0) {
 		/* Defer teardown so the final response can flush to the client
 		 * before the transport goes away (upstream cleanup_delay).
