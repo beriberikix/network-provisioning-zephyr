@@ -104,6 +104,27 @@ int network_prov_mgr_init(struct network_prov_mgr_config config);
 void network_prov_mgr_deinit(void);
 
 /**
+ * Advertise an application-specific section in the proto-ver capabilities JSON.
+ *
+ * Adds a sibling object to the built-in "prov" object, keyed by @p label:
+ * `"<label>":{"ver":"<version>","cap":[...]}`. Apps use it to negotiate their
+ * own version and feature flags with the provisioning client. Mirrors
+ * ESP-IDF's network_prov_mgr_set_app_info(). Must be called after
+ * @ref network_prov_mgr_init and before @ref network_prov_mgr_start_provisioning
+ * (the JSON is rendered at start). Tokens must be JSON-safe.
+ *
+ * @param label              Object key (e.g. the application name).
+ * @param version            Version string for the app section.
+ * @param capabilities       Array of capability strings (may be NULL if count 0).
+ * @param capabilities_count Number of entries in @p capabilities.
+ * @return 0 on success, -EINVAL on bad args, -EPERM if already started,
+ *         -ENOMEM if the rendered section does not fit.
+ */
+int network_prov_mgr_set_app_info(const char *label, const char *version,
+				  const char *const *capabilities,
+				  size_t capabilities_count);
+
+/**
  * Report whether the device already has stored Wi-Fi credentials.
  *
  * @param provisioned Set to true if at least one credential is stored.
@@ -133,6 +154,57 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 
 /** Stop advertising and tear down the transport (keeps the manager init'd). */
 void network_prov_mgr_stop_provisioning(void);
+
+/**
+ * Disable the automatic teardown of the provisioning service after a
+ * successful connection.
+ *
+ * By default the manager auto-stops itself once credentials succeed, after a
+ * grace window (CONFIG_NETWORK_PROV_AUTOSTOP_TIMEOUT_MS) that lets the app read
+ * the final status. Call this (before success) to take over teardown timing;
+ * the app must then call @ref network_prov_mgr_stop_provisioning itself.
+ * Mirrors ESP-IDF's network_prov_mgr_disable_auto_stop().
+ *
+ * @param cleanup_delay_ms Delay applied by stop_provisioning() before the
+ *                         transport is torn down, so the final response can
+ *                         flush to the client (0 = immediate).
+ * @return 0 on success, -EPERM if the manager is not initialised.
+ */
+int network_prov_mgr_disable_auto_stop(uint32_t cleanup_delay_ms);
+
+/** True when no provisioning session is active (state machine idle). */
+bool network_prov_mgr_is_sm_idle(void);
+
+/**
+ * Reset the Wi-Fi provisioning state machine after a failed attempt so the app
+ * can supply fresh credentials without restarting the service. Mirrors
+ * ESP-IDF's network_prov_mgr_reset_wifi_sm_state_on_failure().
+ *
+ * @return 0 on success, -EPERM if provisioning is not active.
+ */
+int network_prov_mgr_reset_wifi_sm_state_on_failure(void);
+
+/**
+ * Reset the Wi-Fi provisioning state machine to accept a new network while the
+ * service is still running (re-provision). Mirrors ESP-IDF's
+ * network_prov_mgr_reset_wifi_sm_state_for_reprovision().
+ *
+ * @return 0 on success, -EPERM if provisioning is not active.
+ */
+int network_prov_mgr_reset_wifi_sm_state_for_reprovision(void);
+
+/**
+ * Apply Wi-Fi credentials programmatically, as if received from a client. Runs
+ * the same staging/apply/connect/retry path (persists the credentials, emits
+ * NETWORK_PROV_CRED_RECV, then success/failure). Useful for headless
+ * provisioning. Mirrors ESP-IDF's network_prov_mgr_configure_wifi_sta().
+ *
+ * @param ssid Network SSID (NUL-terminated, required).
+ * @param psk  Passphrase (NUL-terminated), or NULL/empty for an open network.
+ * @return 0 on success, -EPERM if provisioning is not active, -EINVAL on bad
+ *         args, or another negative errno from the apply path.
+ */
+int network_prov_mgr_configure_wifi_sta(const char *ssid, const char *psk);
 
 /**
  * Number of Wi-Fi connection attempts left for the credentials currently

@@ -407,6 +407,33 @@ static Status do_apply_config(void)
 	return Status_Success;
 }
 
+int network_prov_wifi_config_set_and_apply(const uint8_t *ssid, size_t ssid_len,
+					   const uint8_t *psk, size_t psk_len)
+{
+	if (ssid == NULL || ssid_len == 0 || ssid_len > SSID_MAX ||
+	    psk_len > PASS_MAX) {
+		return -EINVAL;
+	}
+
+	/* Stage the credentials the same way SetWifiConfig does, then run the
+	 * shared apply path (persist + connect + retry + events).
+	 */
+	memset(wc.ssid, 0, sizeof(wc.ssid));
+	wc.ssid_len = ssid_len;
+	memcpy(wc.ssid, ssid, ssid_len);
+
+	memset(wc.pass, 0, sizeof(wc.pass));
+	wc.pass_len = psk_len;
+	if (psk_len > 0) {
+		memcpy(wc.pass, psk, psk_len);
+	}
+
+	wc.has_bssid = false;
+	wc.channel = 0;
+
+	return (do_apply_config() == Status_Success) ? 0 : -EIO;
+}
+
 static void fill_connected_state(WifiConnectedState *out)
 {
 	struct net_if *iface = net_if_get_wifi_sta();

@@ -77,6 +77,17 @@ config NETWORK_PROV_BLE_MAX_RESP_LEN
 	  for the biggest encoded (and encrypted) response, dominated by a page
 	  of scan results.
 
+config NETWORK_PROV_AUTOSTOP_TIMEOUT_MS
+	int "Auto-stop grace period after a successful connection (ms)"
+	default 30000
+	help
+	  After credentials succeed, the manager waits this long before
+	  automatically tearing down the provisioning service, giving the
+	  client time to read the final status (the apps keep polling
+	  GetWifiStatus over the transport). Applications that manage teardown
+	  themselves can opt out at runtime with
+	  network_prov_mgr_disable_auto_stop().
+
 endif # NETWORK_PROV_MGR
 
 if NETWORK_PROV_CORE

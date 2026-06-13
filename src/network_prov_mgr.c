@@ -44,9 +44,23 @@ static struct {
 	struct network_prov_event_handler app;
 	uint32_t wifi_conn_attempts;
 	struct protocomm *pc;
-	char version_json[160];
+	/* Optional application section injected into the proto-ver JSON by
+	 * network_prov_mgr_set_app_info(), pre-rendered as
+	 * "<label>":{"ver":"..","cap":[..]}, (note the trailing comma) or "".
+	 */
+	char app_info_json[256];
+	char version_json[448];
 	struct k_sem done;
+	/* Auto-stop: tear the service down a grace period after success unless
+	 * the app opted out via network_prov_mgr_disable_auto_stop().
+	 */
+	bool auto_stop;
+	uint32_t cleanup_delay_ms;
+	struct k_work_delayable teardown_work;
 } mgr;
+
+static void do_teardown(void);
+static void teardown_work_fn(struct k_work *work);
 
 void network_prov_emit_event(enum network_prov_cb_event event, void *event_data)
 {
@@ -55,6 +69,14 @@ void network_prov_emit_event(enum network_prov_cb_event event, void *event_data)
 	}
 	if (event == NETWORK_PROV_CRED_SUCCESS) {
 		k_sem_give(&mgr.done);
+		/* Auto-stop: after success, give the app its status-poll grace
+		 * window, then tear the service down (upstream parity). The app
+		 * can opt out with network_prov_mgr_disable_auto_stop().
+		 */
+		if (mgr.started && mgr.auto_stop) {
+			k_work_schedule(&mgr.teardown_work,
+					K_MSEC(CONFIG_NETWORK_PROV_AUTOSTOP_TIMEOUT_MS));
+		}
 	}
 }
 
@@ -79,7 +101,10 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 	mgr.scheme = config.scheme;
 	mgr.app = config.app_event_handler;
 	mgr.wifi_conn_attempts = config.wifi_conn_attempts;
+	mgr.auto_stop = true;
+	mgr.cleanup_delay_ms = 0;
 	k_sem_init(&mgr.done, 0, 1);
+	k_work_init_delayable(&mgr.teardown_work, teardown_work_fn);
 
 #if defined(CONFIG_SETTINGS)
 	int ret = settings_subsys_init();
@@ -104,8 +129,9 @@ void network_prov_mgr_deinit(void)
 	if (!mgr.inited) {
 		return;
 	}
+	(void)k_work_cancel_delayable(&mgr.teardown_work);
 	if (mgr.started) {
-		network_prov_mgr_stop_provisioning();
+		do_teardown();
 	}
 	mgr.inited = false;
 	network_prov_emit_event(NETWORK_PROV_DEINIT, NULL);
@@ -136,6 +162,56 @@ int network_prov_mgr_reset_wifi_provisioning(void)
 	return 0;
 }
 
+int network_prov_mgr_set_app_info(const char *label, const char *version,
+				  const char *const *capabilities,
+				  size_t capabilities_count)
+{
+	if (label == NULL || label[0] == '\0' || version == NULL) {
+		return -EINVAL;
+	}
+	if (mgr.started) {
+		/* The version JSON is rendered at start_provisioning() time. */
+		return -EPERM;
+	}
+	if (capabilities_count > 0 && capabilities == NULL) {
+		return -EINVAL;
+	}
+
+	/* Render "<label>":{"ver":"<version>","cap":["c0","c1",...]}, — the
+	 * trailing comma lets build_version_json() splice it before "prov".
+	 * Tokens are assumed JSON-safe (same convention as the "prov" caps).
+	 */
+	int n = snprintf(mgr.app_info_json, sizeof(mgr.app_info_json),
+			 "\"%s\":{\"ver\":\"%s\",\"cap\":[", label, version);
+
+	if (n < 0 || (size_t)n >= sizeof(mgr.app_info_json)) {
+		goto overflow;
+	}
+	size_t off = n;
+
+	for (size_t i = 0; i < capabilities_count; i++) {
+		if (capabilities[i] == NULL) {
+			goto overflow;
+		}
+		n = snprintf(mgr.app_info_json + off, sizeof(mgr.app_info_json) - off,
+			     "%s\"%s\"", (i == 0) ? "" : ",", capabilities[i]);
+		if (n < 0 || (size_t)n >= sizeof(mgr.app_info_json) - off) {
+			goto overflow;
+		}
+		off += n;
+	}
+
+	n = snprintf(mgr.app_info_json + off, sizeof(mgr.app_info_json) - off, "]},");
+	if (n < 0 || (size_t)n >= sizeof(mgr.app_info_json) - off) {
+		goto overflow;
+	}
+	return 0;
+
+overflow:
+	mgr.app_info_json[0] = '\0';
+	return -ENOMEM;
+}
+
 static void build_version_json(enum network_prov_security security, const char *pop)
 {
 	int sec_ver = (security == NETWORK_PROV_SECURITY_1) ? 1 : 0;
@@ -143,9 +219,9 @@ static void build_version_json(enum network_prov_security security, const char *
 		      (pop == NULL || pop[0] == '\0');
 
 	snprintf(mgr.version_json, sizeof(mgr.version_json),
-		 "{\"prov\":{\"ver\":\"v1.1\",\"sec_ver\":%d,"
+		 "{%s\"prov\":{\"ver\":\"v1.1\",\"sec_ver\":%d,"
 		 "\"cap\":[\"wifi_prov\",\"wifi_scan\"%s]}}",
-		 sec_ver, no_pop ? ",\"no_pop\"" : "");
+		 mgr.app_info_json, sec_ver, no_pop ? ",\"no_pop\"" : "");
 }
 
 int network_prov_mgr_start_provisioning(enum network_prov_security security,
@@ -241,7 +317,7 @@ err:
 	return ret;
 }
 
-void network_prov_mgr_stop_provisioning(void)
+static void do_teardown(void)
 {
 	if (!mgr.started) {
 		return;
@@ -262,6 +338,77 @@ void network_prov_mgr_stop_provisioning(void)
 	mgr.pc = NULL;
 	mgr.started = false;
 	network_prov_emit_event(NETWORK_PROV_END, NULL);
+}
+
+static void teardown_work_fn(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	do_teardown();
+}
+
+void network_prov_mgr_stop_provisioning(void)
+{
+	if (!mgr.started) {
+		return;
+	}
+	(void)k_work_cancel_delayable(&mgr.teardown_work);
+	if (mgr.cleanup_delay_ms > 0) {
+		/* Defer teardown so the final response can flush to the client
+		 * before the transport goes away (upstream cleanup_delay).
+		 */
+		k_work_schedule(&mgr.teardown_work, K_MSEC(mgr.cleanup_delay_ms));
+		return;
+	}
+	do_teardown();
+}
+
+int network_prov_mgr_disable_auto_stop(uint32_t cleanup_delay_ms)
+{
+	if (!mgr.inited) {
+		return -EPERM;
+	}
+	mgr.auto_stop = false;
+	mgr.cleanup_delay_ms = cleanup_delay_ms;
+	/* Drop any auto-stop already scheduled by an earlier success. */
+	(void)k_work_cancel_delayable(&mgr.teardown_work);
+	return 0;
+}
+
+bool network_prov_mgr_is_sm_idle(void)
+{
+	return !mgr.started;
+}
+
+int network_prov_mgr_reset_wifi_sm_state_on_failure(void)
+{
+	if (!mgr.started) {
+		return -EPERM;
+	}
+	network_prov_wifi_config_reset();
+	return 0;
+}
+
+int network_prov_mgr_reset_wifi_sm_state_for_reprovision(void)
+{
+	if (!mgr.started) {
+		return -EPERM;
+	}
+	network_prov_wifi_config_reset();
+	return 0;
+}
+
+int network_prov_mgr_configure_wifi_sta(const char *ssid, const char *psk)
+{
+	if (!mgr.started) {
+		return -EPERM;
+	}
+	if (ssid == NULL || ssid[0] == '\0') {
+		return -EINVAL;
+	}
+	return network_prov_wifi_config_set_and_apply(
+		(const uint8_t *)ssid, strlen(ssid),
+		(const uint8_t *)(psk != NULL ? psk : ""),
+		psk != NULL ? strlen(psk) : 0);
 }
 
 int network_prov_mgr_get_wifi_remaining_conn_attempts(uint32_t *attempts_remaining)

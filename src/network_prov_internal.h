@@ -25,6 +25,11 @@ int network_prov_wifi_config_init(uint32_t conn_attempts);
 void network_prov_wifi_config_deinit(void);
 void network_prov_wifi_config_reset(void);
 uint32_t network_prov_wifi_config_remaining_attempts(void);
+/* Stage @p ssid / @p psk and run the shared apply path (persist + connect +
+ * retry + events) — backs network_prov_mgr_configure_wifi_sta().
+ */
+int network_prov_wifi_config_set_and_apply(const uint8_t *ssid, size_t ssid_len,
+					   const uint8_t *psk, size_t psk_len);
 int network_prov_wifi_config_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				     uint8_t **outbuf, size_t *outlen);
 
