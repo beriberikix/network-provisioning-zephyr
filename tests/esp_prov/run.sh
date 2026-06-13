@@ -12,7 +12,7 @@
 # Requires: ESP_PROV, IDF_PATH (from setup.sh) and DUT_EXE in the environment.
 #
 # SPDX-License-Identifier: Apache-2.0
-set -u
+set -euo pipefail
 
 : "${DUT_EXE:?set DUT_EXE to the built native_sim zephyr.exe}"
 : "${ESP_PROV:?set ESP_PROV (see setup.sh)}"
@@ -26,7 +26,11 @@ GOOD_SSID=HomeNet
 GOOD_PASS=correct-horse-battery
 LOG=$(mktemp)
 
-cleanup() { [ -n "${DUT_PID:-}" ] && kill "$DUT_PID" 2>/dev/null; }
+cleanup() {
+	[ -n "${DUT_PID:-}" ] && kill "$DUT_PID" 2>/dev/null
+	ip link del zeth 2>/dev/null || true
+	rm -f "$LOG"
+}
 trap cleanup EXIT
 
 # Host side of the TAP the device attaches to.
@@ -39,11 +43,21 @@ ip link set lo up
 DUT_PID=$!
 
 # Wait for the DUT to come up and answer on :80.
+ready=0
 for _ in $(seq 1 50); do
-	grep -q "DUT ready" "$LOG" && break
+	if grep -q "DUT ready" "$LOG"; then
+		ready=1
+		break
+	fi
 	sleep 0.2
 done
-echo "=== DUT boot ==="; grep -iE 'host interface|SoftAP|Provisioning started|DUT ready' "$LOG"
+echo "=== DUT boot ==="
+grep -iE 'host interface|SoftAP|Provisioning started|DUT ready' "$LOG" || true
+if [ "$ready" != 1 ]; then
+	echo "FAIL: DUT did not become ready"
+	cat "$LOG"
+	exit 1
+fi
 
 fail() { echo "FAIL: $1"; echo "--- esp_prov output ---"; cat "$2"; exit 1; }
 
@@ -51,8 +65,10 @@ run_prov() {  # <description> <expect-regex> <args...>
 	local desc="$1" expect="$2"; shift 2
 	local out; out=$(mktemp)
 	echo "### $desc"
+	# esp_prov exits 0 even for a reported provisioning failure, so the
+	# outcome is asserted from its output, not its exit code.
 	"$PY" "$ESP_PROV" --transport softap --service_name "$DUT_IP:80" \
-		--sec_ver 1 --pop "$POP" "$@" >"$out" 2>&1
+		--sec_ver 1 --pop "$POP" "$@" >"$out" 2>&1 || true
 	sed 's/^/    /' "$out"
 	grep -qE "$expect" "$out" || fail "$desc: expected /$expect/" "$out"
 	rm -f "$out"

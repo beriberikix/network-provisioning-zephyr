@@ -103,12 +103,12 @@ int main(void)
 
 	if (network_prov_mgr_init(cfg) != 0) {
 		LOG_ERR("manager init failed");
-		return 0;
+		return 1;
 	}
 	if (network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, PROV_POP,
 						AP_NAME, NULL) != 0) {
 		LOG_ERR("start_provisioning failed");
-		return 0;
+		return 1;
 	}
 
 	LOG_INF("esp_prov DUT ready: provisioning over HTTP at %s:80", DUT_IP);

@@ -24,17 +24,21 @@ WORK="$(cd "$WORK" && pwd)"
 
 log() { echo "[esp_prov setup] $*" >&2; }
 
-# 1. esp_prov tool + network_provisioning protos/python (pinned).
-if [ ! -d "$WORK/idf-extra-components/.git" ]; then
-	log "cloning idf-extra-components @ ${IDF_EXTRA_REF}"
-	git clone --filter=blob:none --sparse "$IDF_EXTRA_URL" \
-		"$WORK/idf-extra-components" >&2
-	git -C "$WORK/idf-extra-components" sparse-checkout set \
+# 1. esp_prov tool + network_provisioning protos/python (pinned). Always check
+# out the pinned ref, so re-running against an existing work dir is
+# deterministic rather than silently reusing a stale checkout.
+REPO_DIR="$WORK/idf-extra-components"
+if [ ! -d "$REPO_DIR/.git" ]; then
+	log "cloning idf-extra-components"
+	git clone --filter=blob:none --sparse "$IDF_EXTRA_URL" "$REPO_DIR" >&2
+	git -C "$REPO_DIR" sparse-checkout set \
 		network_provisioning/tool/esp_prov network_provisioning/python \
 		network_provisioning/proto >&2
-	git -C "$WORK/idf-extra-components" checkout -q "${IDF_EXTRA_REF}" >&2
 fi
-NETPROV="$WORK/idf-extra-components/network_provisioning"
+log "checking out ${IDF_EXTRA_REF}"
+git -C "$REPO_DIR" fetch -q --filter=blob:none origin "${IDF_EXTRA_REF}" 2>/dev/null || true
+git -C "$REPO_DIR" checkout -q "${IDF_EXTRA_REF}" >&2
+NETPROV="$REPO_DIR/network_provisioning"
 
 # 2. protocomm .proto (pinned esp-idf), for the security/session messages.
 mkdir -p "$WORK/protocomm_proto"
