@@ -74,6 +74,21 @@ static enum wifi_security_type security_from_pass(void)
 	return (wc.pass_len > 0) ? WIFI_SECURITY_TYPE_PSK : WIFI_SECURITY_TYPE_NONE;
 }
 
+/* Drop the in-flight connect snapshot once no further attempt will use it.
+ * Zeroing it also keeps the passphrase from lingering in RAM. A zero
+ * inflight_ssid_len additionally tells on_connect_result()/retry_work_handler
+ * to ignore a stale or already-queued event.
+ */
+static void clear_inflight(void)
+{
+	memset(wc.inflight_ssid, 0, sizeof(wc.inflight_ssid));
+	wc.inflight_ssid_len = 0;
+	memset(wc.inflight_pass, 0, sizeof(wc.inflight_pass));
+	wc.inflight_pass_len = 0;
+	wc.inflight_has_bssid = false;
+	wc.inflight_channel = 0;
+}
+
 /* Issue NET_REQUEST_WIFI_CONNECT from the in-flight snapshot. Used for the
  * initial attempt and for retries, so a Set/Apply re-staging wc.ssid/pass
  * mid-flight cannot change what is being retried.
@@ -142,7 +157,7 @@ static void final_failure(void)
 	 */
 	(void)wifi_credentials_delete_by_ssid(
 		(const char *)wc.inflight_ssid, wc.inflight_ssid_len);
-	wc.inflight_ssid_len = 0;
+	clear_inflight();
 
 	network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
 }
@@ -184,7 +199,7 @@ static void on_connect_result(struct net_mgmt_event_callback *cb)
 		LOG_INF("Wi-Fi connected");
 		wc.sta_state = WifiStationState_Connected;
 		wc.attempt_failed = false;
-		wc.inflight_ssid_len = 0;
+		clear_inflight();
 		network_prov_emit_event(NETWORK_PROV_CRED_SUCCESS, NULL);
 		return;
 	}
@@ -239,6 +254,11 @@ int network_prov_wifi_config_init(uint32_t conn_attempts)
 
 void network_prov_wifi_config_deinit(void)
 {
+	/* Drop the snapshot before cancelling so a retry already running on the
+	 * workqueue sees inflight_ssid_len == 0 and bails instead of issuing a
+	 * connect after teardown.
+	 */
+	clear_inflight();
 	(void)k_work_cancel_delayable(&wc.retry_work);
 	if (wc.cb_registered) {
 		net_mgmt_del_event_callback(&wc.mgmt_cb);
@@ -252,6 +272,7 @@ void network_prov_wifi_config_reset(void)
 	 * the app can retry provisioning after a failed attempt (prov-ctrl
 	 * CmdCtrlWifiReset / CmdCtrlWifiReprov).
 	 */
+	clear_inflight();
 	(void)k_work_cancel_delayable(&wc.retry_work);
 	memset(wc.ssid, 0, sizeof(wc.ssid));
 	wc.ssid_len = 0;
@@ -259,12 +280,6 @@ void network_prov_wifi_config_reset(void)
 	wc.pass_len = 0;
 	wc.has_bssid = false;
 	wc.channel = 0;
-	memset(wc.inflight_ssid, 0, sizeof(wc.inflight_ssid));
-	wc.inflight_ssid_len = 0;
-	memset(wc.inflight_pass, 0, sizeof(wc.inflight_pass));
-	wc.inflight_pass_len = 0;
-	wc.inflight_has_bssid = false;
-	wc.inflight_channel = 0;
 	/* Allow the full attempt budget again after an app-driven reset
 	 * (upstream 1.2.2 parity).
 	 */
@@ -380,7 +395,7 @@ static Status do_apply_config(void)
 		LOG_ERR("Connect request failed: %d", ret);
 		wc.sta_state = WifiStationState_ConnectionFailed;
 		wc.fail_reason = WifiConnectFailedReason_AuthError;
-		wc.inflight_ssid_len = 0;
+		clear_inflight();
 
 		(void)wifi_credentials_delete_by_ssid((const char *)wc.ssid,
 						      wc.ssid_len);
