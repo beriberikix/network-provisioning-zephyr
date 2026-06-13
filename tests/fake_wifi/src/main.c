@@ -188,6 +188,75 @@ ZTEST(fake_wifi, test_connect_sync_error)
 	zassert_equal(ev.connect_status, 0);
 }
 
+/* Credential-matching mode: the outcome is derived from the requested creds. */
+static void program_one_network(void)
+{
+	const struct fake_wifi_ap aps[] = {
+		{ .ssid = "HomeNet", .ssid_len = 7, .channel = 6, .rssi = -40,
+		  .security = WIFI_SECURITY_TYPE_PSK,
+		  .bssid = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55} },
+	};
+
+	fake_wifi_set_scan_aps(aps, ARRAY_SIZE(aps));
+	fake_wifi_set_expected_credentials("HomeNet", "correct-horse");
+}
+
+ZTEST(fake_wifi, test_creds_correct_password)
+{
+	program_one_network();
+
+	struct wifi_connect_req_params params = {
+		.ssid = (const uint8_t *)"HomeNet", .ssid_length = 7,
+		.security = WIFI_SECURITY_TYPE_PSK,
+		.psk = (const uint8_t *)"correct-horse", .psk_length = 13,
+		.channel = WIFI_CHANNEL_ANY, .band = WIFI_FREQ_BAND_UNKNOWN,
+		.mfp = WIFI_MFP_OPTIONAL, .timeout = SYS_FOREVER_MS,
+	};
+
+	zassert_equal(net_mgmt(NET_REQUEST_WIFI_CONNECT, wifi_iface(), &params,
+			       sizeof(params)), 0);
+	zassert_equal(k_sem_take(&ev.connect_sem, K_SECONDS(2)), 0);
+	zassert_equal(ev.connect_status, 0, "correct password should succeed");
+}
+
+ZTEST(fake_wifi, test_creds_wrong_password)
+{
+	program_one_network();
+
+	struct wifi_connect_req_params params = {
+		.ssid = (const uint8_t *)"HomeNet", .ssid_length = 7,
+		.security = WIFI_SECURITY_TYPE_PSK,
+		.psk = (const uint8_t *)"wrongpass123", .psk_length = 12,
+		.channel = WIFI_CHANNEL_ANY, .band = WIFI_FREQ_BAND_UNKNOWN,
+		.mfp = WIFI_MFP_OPTIONAL, .timeout = SYS_FOREVER_MS,
+	};
+
+	zassert_equal(net_mgmt(NET_REQUEST_WIFI_CONNECT, wifi_iface(), &params,
+			       sizeof(params)), 0);
+	zassert_equal(k_sem_take(&ev.connect_sem, K_SECONDS(2)), 0);
+	zassert_equal(ev.connect_status, WIFI_STATUS_CONN_WRONG_PASSWORD,
+		      "wrong password should report WRONG_PASSWORD");
+}
+
+ZTEST(fake_wifi, test_creds_unknown_ssid)
+{
+	program_one_network();
+
+	struct wifi_connect_req_params params = {
+		.ssid = (const uint8_t *)"Ghost", .ssid_length = 5,
+		.security = WIFI_SECURITY_TYPE_PSK,
+		.psk = (const uint8_t *)"correct-horse", .psk_length = 13,
+		.channel = WIFI_CHANNEL_ANY, .band = WIFI_FREQ_BAND_UNKNOWN,
+		.mfp = WIFI_MFP_OPTIONAL, .timeout = SYS_FOREVER_MS,
+	};
+
+	zassert_equal(net_mgmt(NET_REQUEST_WIFI_CONNECT, wifi_iface(), &params,
+			       sizeof(params)), 0);
+	zassert_equal(k_sem_take(&ev.connect_sem, K_SECONDS(2)), 0);
+	zassert_equal(ev.connect_status, WIFI_STATUS_CONN_AP_NOT_FOUND,
+		      "unknown SSID should report AP_NOT_FOUND");
+}
+
 static void *suite_setup(void)
 {
 	net_mgmt_init_event_callback(&cb, mgmt_handler, WIFI_MGMT_EVENTS);

@@ -49,6 +49,15 @@ struct fake_wifi_data {
 	enum wifi_conn_status next_conn;
 	int next_sync_err;
 
+	/* Credential-matching mode: derive the connect outcome from the
+	 * requested credentials against this one "real" network.
+	 */
+	bool creds_mode;
+	char exp_ssid[WIFI_SSID_MAX_LEN + 1];
+	uint8_t exp_ssid_len;
+	char exp_pass[WIFI_PSK_MAX_LEN + 1];
+	uint8_t exp_pass_len;
+
 	/* Snapshot of the last connect target, echoed back by iface_status. */
 	char conn_ssid[WIFI_SSID_MAX_LEN + 1];
 	uint8_t conn_ssid_len;
@@ -91,13 +100,61 @@ void fake_wifi_set_next_connect_sync_error(int errnum)
 	fw_data.next_sync_err = errnum;
 }
 
+void fake_wifi_set_expected_credentials(const char *ssid, const char *pass)
+{
+	if (ssid == NULL || ssid[0] == '\0') {
+		fw_data.creds_mode = false;
+		return;
+	}
+	fw_data.creds_mode = true;
+	fw_data.exp_ssid_len = MIN(strlen(ssid), (size_t)WIFI_SSID_MAX_LEN);
+	memcpy(fw_data.exp_ssid, ssid, fw_data.exp_ssid_len);
+	fw_data.exp_pass_len = (pass != NULL)
+				 ? MIN(strlen(pass), (size_t)WIFI_PSK_MAX_LEN) : 0;
+	if (fw_data.exp_pass_len > 0) {
+		memcpy(fw_data.exp_pass, pass, fw_data.exp_pass_len);
+	}
+}
+
 void fake_wifi_reset(void)
 {
 	fw_data.ap_count = 0;
 	fw_data.next_conn = WIFI_STATUS_CONN_SUCCESS;
 	fw_data.next_sync_err = 0;
+	fw_data.creds_mode = false;
+	fw_data.exp_ssid_len = 0;
+	fw_data.exp_pass_len = 0;
 	fw_data.connected = false;
 	fw_data.conn_ssid_len = 0;
+}
+
+/* Is @p ssid one of the canned scan APs? */
+static bool ssid_in_scan_list(const struct fake_wifi_data *d,
+			      const uint8_t *ssid, uint8_t ssid_len)
+{
+	for (size_t i = 0; i < d->ap_count; i++) {
+		if (d->aps[i].ssid_len == ssid_len &&
+		    memcmp(d->aps[i].ssid, ssid, ssid_len) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Derive the connect outcome from the requested credentials (creds_mode). */
+static enum wifi_conn_status creds_outcome(const struct fake_wifi_data *d,
+					   const struct wifi_connect_req_params *p)
+{
+	if (!ssid_in_scan_list(d, p->ssid, p->ssid_length)) {
+		return WIFI_STATUS_CONN_AP_NOT_FOUND;
+	}
+	if (p->ssid_length != d->exp_ssid_len ||
+	    memcmp(p->ssid, d->exp_ssid, d->exp_ssid_len) != 0 ||
+	    p->psk_length != d->exp_pass_len ||
+	    (d->exp_pass_len > 0 && memcmp(p->psk, d->exp_pass, d->exp_pass_len) != 0)) {
+		return WIFI_STATUS_CONN_WRONG_PASSWORD;
+	}
+	return WIFI_STATUS_CONN_SUCCESS;
 }
 
 /* --- Deferred work: emit scan results / connect result -------------------- */
@@ -160,6 +217,10 @@ static int fake_connect(const struct device *dev,
 
 		d->next_sync_err = 0; /* one-shot */
 		return -err;
+	}
+
+	if (d->creds_mode) {
+		d->next_conn = creds_outcome(d, params);
 	}
 
 	d->conn_ssid_len = MIN(params->ssid_length, (uint8_t)WIFI_SSID_MAX_LEN);
