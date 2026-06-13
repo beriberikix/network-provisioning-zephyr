@@ -130,9 +130,10 @@ static void connect_work_fn(struct k_work *work)
 {
 	struct fake_wifi_data *d = CONTAINER_OF(work, struct fake_wifi_data, connect_work);
 
-	if (d->next_conn == WIFI_STATUS_CONN_SUCCESS) {
-		d->connected = true;
-	}
+	/* Track state deterministically: a failed connect after a successful one
+	 * must leave iface_status reporting disconnected.
+	 */
+	d->connected = (d->next_conn == WIFI_STATUS_CONN_SUCCESS);
 	wifi_mgmt_raise_connect_result_event(d->iface, (int)d->next_conn);
 }
 

@@ -47,6 +47,8 @@ int prov_client_keygen(struct prov_client *c)
 
 	st = psa_export_public_key(c->key, c->pubkey, sizeof(c->pubkey), &olen);
 	if (st != PSA_SUCCESS || olen != PROV_CLIENT_PUBKEY_LEN) {
+		psa_destroy_key(c->key);
+		c->key = PSA_KEY_ID_NULL;
 		return -EIO;
 	}
 	return 0;
@@ -95,13 +97,20 @@ int prov_client_derive(struct prov_client *c, const char *pop,
 	c->cipher = psa_cipher_operation_init();
 	st = psa_cipher_encrypt_setup(&c->cipher, c->session_key, PSA_ALG_CTR);
 	if (st != PSA_SUCCESS) {
-		return -EIO;
+		goto err;
 	}
 	st = psa_cipher_set_iv(&c->cipher, device_random, PROV_CLIENT_RANDOM_LEN);
 	if (st != PSA_SUCCESS) {
-		return -EIO;
+		goto err;
 	}
 	return 0;
+
+err:
+	/* Don't leave a half-armed cipher or a leaked session key behind. */
+	psa_cipher_abort(&c->cipher);
+	psa_destroy_key(c->session_key);
+	c->session_key = PSA_KEY_ID_NULL;
+	return -EIO;
 }
 
 int prov_client_xform(struct prov_client *c, const uint8_t *in, size_t inlen,
