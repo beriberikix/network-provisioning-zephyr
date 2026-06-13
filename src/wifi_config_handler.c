@@ -37,14 +37,29 @@ static struct {
 	bool has_bssid;
 	uint8_t channel;
 
-	/* SSID of the connect attempt currently in flight. Snapshotted at
-	 * apply time because wc.ssid may be rewritten (a new Set/Apply) or
-	 * cleared (CmdCtrlWifiReset) before the asynchronous connect result
-	 * arrives; zero length means no attempt is pending and a stale result
-	 * event must be ignored.
+	/* Connect parameters of the attempt currently in flight. Snapshotted
+	 * at apply time because wc.ssid/pass may be rewritten (a new
+	 * Set/Apply) or cleared (CmdCtrlWifiReset) before the asynchronous
+	 * connect result arrives; zero ssid length means no attempt is
+	 * pending and a stale result event must be ignored. Retries reconnect
+	 * from this snapshot, never from the staging fields.
 	 */
 	uint8_t inflight_ssid[SSID_MAX + 1];
 	size_t inflight_ssid_len;
+	uint8_t inflight_pass[PASS_MAX + 1];
+	size_t inflight_pass_len;
+	uint8_t inflight_bssid[WIFI_MAC_ADDR_LEN];
+	bool inflight_has_bssid;
+	uint8_t inflight_channel;
+
+	/* Connection attempts: 0 max = single attempt, fail immediately
+	 * (wifi_conn_attempts upstream parity).
+	 */
+	uint32_t attempts_max;
+	uint32_t attempts_completed;
+	bool attempt_failed; /* at least one attempt failed, retry running */
+	int last_conn_status; /* failure cause of the most recent attempt */
+	struct k_work_delayable retry_work;
 
 	/* Reported connection state. */
 	WifiStationState sta_state;
@@ -57,6 +72,99 @@ static struct {
 static enum wifi_security_type security_from_pass(void)
 {
 	return (wc.pass_len > 0) ? WIFI_SECURITY_TYPE_PSK : WIFI_SECURITY_TYPE_NONE;
+}
+
+/* Issue NET_REQUEST_WIFI_CONNECT from the in-flight snapshot. Used for the
+ * initial attempt and for retries, so a Set/Apply re-staging wc.ssid/pass
+ * mid-flight cannot change what is being retried.
+ */
+static int connect_from_inflight(void)
+{
+	struct net_if *iface = net_if_get_wifi_sta();
+
+	if (iface == NULL) {
+		iface = net_if_get_first_wifi();
+	}
+	if (iface == NULL) {
+		return -ENODEV;
+	}
+
+	struct wifi_connect_req_params params = {0};
+
+	params.ssid = wc.inflight_ssid;
+	params.ssid_length = wc.inflight_ssid_len;
+	params.psk = (wc.inflight_pass_len > 0) ? wc.inflight_pass : NULL;
+	params.psk_length = wc.inflight_pass_len;
+	params.security = (wc.inflight_pass_len > 0) ? WIFI_SECURITY_TYPE_PSK
+						     : WIFI_SECURITY_TYPE_NONE;
+	params.channel = (wc.inflight_channel > 0) ? wc.inflight_channel
+						   : WIFI_CHANNEL_ANY;
+	params.band = WIFI_FREQ_BAND_UNKNOWN;
+	params.mfp = WIFI_MFP_OPTIONAL;
+	params.timeout = SYS_FOREVER_MS;
+	if (wc.inflight_has_bssid) {
+		memcpy(params.bssid, wc.inflight_bssid, WIFI_MAC_ADDR_LEN);
+	}
+
+	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
+}
+
+/* Report the final failure of the current credentials: map the cause, drop
+ * the persisted credentials and notify the application.
+ */
+static void final_failure(void)
+{
+	wc.sta_state = WifiStationState_ConnectionFailed;
+	wc.attempt_failed = false;
+
+	enum network_prov_cred_fail_reason reason;
+
+	if (wc.last_conn_status == WIFI_STATUS_CONN_AP_NOT_FOUND) {
+		wc.fail_reason = WifiConnectFailedReason_WifiNetworkNotFound;
+		reason = NETWORK_PROV_WIFI_NETWORK_NOT_FOUND;
+	} else {
+		/* WRONG_PASSWORD, TIMEOUT and generic failures all
+		 * surface as an auth error — the two proto reasons are
+		 * all the apps can display, and a bad passphrase is by
+		 * far the most common cause of the rest.
+		 */
+		wc.fail_reason = WifiConnectFailedReason_AuthError;
+		reason = NETWORK_PROV_WIFI_AUTH_ERROR;
+	}
+
+	/* Drop the credentials persisted by ApplyWifiConfig: they did
+	 * not work, and keeping them would make the device boot
+	 * "provisioned" (and not advertise) after a power cycle even
+	 * though provisioning never succeeded. An in-session retry
+	 * stores fresh credentials on the next apply. Deleting by the
+	 * in-flight snapshot (not wc.ssid) keeps a quick retry's
+	 * freshly staged credentials safe.
+	 */
+	(void)wifi_credentials_delete_by_ssid(
+		(const char *)wc.inflight_ssid, wc.inflight_ssid_len);
+	wc.inflight_ssid_len = 0;
+
+	network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
+}
+
+/* Deferred retry: a connect request issued from inside the connect-result
+ * event callback fails while the Wi-Fi state machine is still tearing down
+ * the previous attempt, so retries run from the system workqueue after a
+ * short settle delay.
+ */
+static void retry_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	if (wc.inflight_ssid_len == 0) {
+		/* Reset arrived while the retry was queued. */
+		return;
+	}
+
+	if (connect_from_inflight() != 0) {
+		LOG_ERR("Retry connect request failed");
+		final_failure();
+	}
 }
 
 static void on_connect_result(struct net_mgmt_event_callback *cb)
@@ -75,41 +183,33 @@ static void on_connect_result(struct net_mgmt_event_callback *cb)
 	if (status->status == 0) {
 		LOG_INF("Wi-Fi connected");
 		wc.sta_state = WifiStationState_Connected;
+		wc.attempt_failed = false;
 		wc.inflight_ssid_len = 0;
 		network_prov_emit_event(NETWORK_PROV_CRED_SUCCESS, NULL);
-	} else {
-		LOG_WRN("Wi-Fi connect failed (conn_status %d)", status->conn_status);
-		wc.sta_state = WifiStationState_ConnectionFailed;
-
-		enum network_prov_cred_fail_reason reason;
-
-		if (status->conn_status == WIFI_STATUS_CONN_AP_NOT_FOUND) {
-			wc.fail_reason = WifiConnectFailedReason_WifiNetworkNotFound;
-			reason = NETWORK_PROV_WIFI_NETWORK_NOT_FOUND;
-		} else {
-			/* WRONG_PASSWORD, TIMEOUT and generic failures all
-			 * surface as an auth error — the two proto reasons are
-			 * all the apps can display, and a bad passphrase is by
-			 * far the most common cause of the rest.
-			 */
-			wc.fail_reason = WifiConnectFailedReason_AuthError;
-			reason = NETWORK_PROV_WIFI_AUTH_ERROR;
-		}
-
-		/* Drop the credentials persisted by ApplyWifiConfig: they did
-		 * not work, and keeping them would make the device boot
-		 * "provisioned" (and not advertise) after a power cycle even
-		 * though provisioning never succeeded. An in-session retry
-		 * stores fresh credentials on the next apply. Deleting by the
-		 * in-flight snapshot (not wc.ssid) keeps a quick retry's
-		 * freshly staged credentials safe.
-		 */
-		(void)wifi_credentials_delete_by_ssid(
-			(const char *)wc.inflight_ssid, wc.inflight_ssid_len);
-		wc.inflight_ssid_len = 0;
-
-		network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
+		return;
 	}
+
+	LOG_WRN("Wi-Fi connect failed (conn_status %d)", status->conn_status);
+	wc.last_conn_status = status->conn_status;
+
+	/* Retry while attempts remain (wifi_conn_attempts upstream parity):
+	 * the wire state stays Connecting, status polls carry the attempts
+	 * remaining, and neither CRED_FAIL nor credential cleanup happens
+	 * until the final attempt.
+	 */
+	if (wc.attempts_max > 0) {
+		wc.attempts_completed++;
+		if (wc.attempts_completed < wc.attempts_max) {
+			wc.attempt_failed = true;
+			wc.sta_state = WifiStationState_Connecting;
+			LOG_INF("Retrying connect (%u attempt(s) remaining)",
+				wc.attempts_max - wc.attempts_completed);
+			k_work_schedule(&wc.retry_work, K_SECONDS(1));
+			return;
+		}
+	}
+
+	final_failure();
 }
 
 static void mgmt_event(struct net_mgmt_event_callback *cb, uint64_t event,
@@ -121,9 +221,13 @@ static void mgmt_event(struct net_mgmt_event_callback *cb, uint64_t event,
 	}
 }
 
-int network_prov_wifi_config_init(void)
+int network_prov_wifi_config_init(uint32_t conn_attempts)
 {
 	wc.sta_state = WifiStationState_Disconnected;
+	wc.attempts_max = conn_attempts;
+	wc.attempts_completed = 0;
+	wc.attempt_failed = false;
+	k_work_init_delayable(&wc.retry_work, retry_work_handler);
 	if (!wc.cb_registered) {
 		net_mgmt_init_event_callback(&wc.mgmt_cb, mgmt_event,
 					     NET_EVENT_WIFI_CONNECT_RESULT);
@@ -135,6 +239,7 @@ int network_prov_wifi_config_init(void)
 
 void network_prov_wifi_config_deinit(void)
 {
+	(void)k_work_cancel_delayable(&wc.retry_work);
 	if (wc.cb_registered) {
 		net_mgmt_del_event_callback(&wc.mgmt_cb);
 		wc.cb_registered = false;
@@ -147,6 +252,7 @@ void network_prov_wifi_config_reset(void)
 	 * the app can retry provisioning after a failed attempt (prov-ctrl
 	 * CmdCtrlWifiReset / CmdCtrlWifiReprov).
 	 */
+	(void)k_work_cancel_delayable(&wc.retry_work);
 	memset(wc.ssid, 0, sizeof(wc.ssid));
 	wc.ssid_len = 0;
 	memset(wc.pass, 0, sizeof(wc.pass));
@@ -155,8 +261,25 @@ void network_prov_wifi_config_reset(void)
 	wc.channel = 0;
 	memset(wc.inflight_ssid, 0, sizeof(wc.inflight_ssid));
 	wc.inflight_ssid_len = 0;
+	memset(wc.inflight_pass, 0, sizeof(wc.inflight_pass));
+	wc.inflight_pass_len = 0;
+	wc.inflight_has_bssid = false;
+	wc.inflight_channel = 0;
+	/* Allow the full attempt budget again after an app-driven reset
+	 * (upstream 1.2.2 parity).
+	 */
+	wc.attempts_completed = 0;
+	wc.attempt_failed = false;
 	wc.sta_state = WifiStationState_Disconnected;
 	wc.fail_reason = WifiConnectFailedReason_AuthError;
+}
+
+uint32_t network_prov_wifi_config_remaining_attempts(void)
+{
+	if (wc.attempts_max <= wc.attempts_completed) {
+		return 0;
+	}
+	return wc.attempts_max - wc.attempts_completed;
 }
 
 static Status do_set_config(const CmdSetWifiConfig *cmd)
@@ -223,26 +346,27 @@ static Status do_apply_config(void)
 
 	network_prov_emit_event(NETWORK_PROV_CRED_RECV, NULL);
 
-	struct wifi_connect_req_params params = {0};
-
-	params.ssid = wc.ssid;
-	params.ssid_length = wc.ssid_len;
-	params.psk = (wc.pass_len > 0) ? wc.pass : NULL;
-	params.psk_length = wc.pass_len;
-	params.security = security_from_pass();
-	params.channel = (wc.channel > 0) ? wc.channel : WIFI_CHANNEL_ANY;
-	params.band = WIFI_FREQ_BAND_UNKNOWN;
-	params.mfp = WIFI_MFP_OPTIONAL;
-	params.timeout = SYS_FOREVER_MS;
-	if (wc.has_bssid) {
-		memcpy(params.bssid, wc.bssid, WIFI_MAC_ADDR_LEN);
-	}
-
 	wc.sta_state = WifiStationState_Connecting;
+
+	/* Snapshot the connect parameters for this attempt (and its retries)
+	 * and start a fresh attempt budget for the new credentials (upstream
+	 * 1.2.2 parity). A retry still queued for the previous credentials
+	 * must not fire against the new snapshot.
+	 */
+	(void)k_work_cancel_delayable(&wc.retry_work);
 	memcpy(wc.inflight_ssid, wc.ssid, sizeof(wc.inflight_ssid));
 	wc.inflight_ssid_len = wc.ssid_len;
+	memcpy(wc.inflight_pass, wc.pass, sizeof(wc.inflight_pass));
+	wc.inflight_pass_len = wc.pass_len;
+	wc.inflight_has_bssid = wc.has_bssid;
+	if (wc.has_bssid) {
+		memcpy(wc.inflight_bssid, wc.bssid, WIFI_MAC_ADDR_LEN);
+	}
+	wc.inflight_channel = wc.channel;
+	wc.attempts_completed = 0;
+	wc.attempt_failed = false;
 
-	ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
+	ret = connect_from_inflight();
 	if (ret != 0) {
 		/* The request was rejected synchronously (e.g. -EINVAL for a
 		 * PSK shorter than 8 characters), so no connect-result event
@@ -315,6 +439,15 @@ static int encode_get_status(uint8_t **outbuf, size_t *outlen)
 		resp.payload.resp_get_wifi_status.which_state =
 			RespGetWifiStatus_wifi_fail_reason_tag;
 		resp.payload.resp_get_wifi_status.state.wifi_fail_reason = wc.fail_reason;
+	} else if (wc.sta_state == WifiStationState_Connecting && wc.attempt_failed) {
+		/* Mid-retry: the wire state stays Connecting and the payload
+		 * carries the attempts remaining (upstream parity — the apps
+		 * keep polling instead of reporting a failure).
+		 */
+		resp.payload.resp_get_wifi_status.which_state =
+			RespGetWifiStatus_attempt_failed_tag;
+		resp.payload.resp_get_wifi_status.state.attempt_failed.attempts_remaining =
+			network_prov_wifi_config_remaining_attempts();
 	}
 
 	return network_prov_pb_encode(NetworkConfigPayload_fields, &resp, outbuf, outlen);

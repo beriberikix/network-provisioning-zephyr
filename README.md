@@ -95,6 +95,10 @@ network_prov_mgr_reset_wifi_provisioning();     /* explicit factory reset: erase
 
 Lifecycle events (`NETWORK_PROV_START`, `CRED_RECV`, `CRED_FAIL`, `CRED_SUCCESS`,
 `END`, …) are delivered to the callback registered in `network_prov_mgr_config`.
+Setting `.wifi_conn_attempts` in the config retries transient connect failures
+during provisioning before reporting failure — while retrying, status polls
+answer `Connecting` with the attempts remaining (`WifiAttemptFailed`), matching
+upstream's `wifi_conn_attempts` behavior. `0` keeps single-attempt semantics.
 
 ## Quick start
 

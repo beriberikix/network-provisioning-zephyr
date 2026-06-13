@@ -17,10 +17,14 @@ extern "C" {
 /** Emit a lifecycle event to the registered application handler. */
 void network_prov_emit_event(enum network_prov_cb_event event, void *event_data);
 
-/* prov-config endpoint (Wi-Fi credentials + connection state machine). */
-int network_prov_wifi_config_init(void);
+/* prov-config endpoint (Wi-Fi credentials + connection state machine).
+ * conn_attempts: max connection attempts per provisioning try (0 = single
+ * attempt, fail immediately).
+ */
+int network_prov_wifi_config_init(uint32_t conn_attempts);
 void network_prov_wifi_config_deinit(void);
 void network_prov_wifi_config_reset(void);
+uint32_t network_prov_wifi_config_remaining_attempts(void);
 int network_prov_wifi_config_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				     uint8_t **outbuf, size_t *outlen);
 

@@ -42,6 +42,7 @@ static struct {
 	bool started;
 	enum network_prov_scheme scheme;
 	struct network_prov_event_handler app;
+	uint32_t wifi_conn_attempts;
 	struct protocomm *pc;
 	char version_json[160];
 	struct k_sem done;
@@ -77,6 +78,7 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 
 	mgr.scheme = config.scheme;
 	mgr.app = config.app_event_handler;
+	mgr.wifi_conn_attempts = config.wifi_conn_attempts;
 	k_sem_init(&mgr.done, 0, 1);
 
 #if defined(CONFIG_SETTINGS)
@@ -190,7 +192,7 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 		goto err;
 	}
 
-	ret = network_prov_wifi_config_init();
+	ret = network_prov_wifi_config_init(mgr.wifi_conn_attempts);
 	if (ret) {
 		goto err;
 	}
@@ -260,6 +262,15 @@ void network_prov_mgr_stop_provisioning(void)
 	mgr.pc = NULL;
 	mgr.started = false;
 	network_prov_emit_event(NETWORK_PROV_END, NULL);
+}
+
+int network_prov_mgr_get_wifi_remaining_conn_attempts(uint32_t *attempts_remaining)
+{
+	if (attempts_remaining == NULL || !mgr.started) {
+		return -EINVAL;
+	}
+	*attempts_remaining = network_prov_wifi_config_remaining_attempts();
+	return 0;
 }
 
 void network_prov_mgr_wait(void)
