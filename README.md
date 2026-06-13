@@ -71,7 +71,8 @@ proto/        protobuf definitions (+ nanopb .options) — verbatim wire format
 include/      public API (network_provisioning/network_prov_mgr.h)
 src/          protocomm core, BLE + SoftAP transports, security 0/1, Wi-Fi handlers, manager
 samples/      wifi_prov_ble and wifi_prov_softap — the reference applications
-tests/        ztest suites for the protocol core + HTTP transport (run on native_sim)
+sim/          test-only fake Wi-Fi backend for headless simulation (native_sim/bsim)
+tests/        native_sim ztest suites + a BabbleSim BLE end-to-end test (tests/bsim)
 zephyr/       module.yml (consumable as a Zephyr module)
 west.yml      standalone west manifest (pins the current stable Zephyr release)
 ```
@@ -129,18 +130,36 @@ ESP SoftAP Provisioning app (or `esp_prov.py --transport softap`).
 ## Running the tests
 
 Unit tests for the protocol core (protocomm engine, security schemes 0/1 —
-including a full client-side security-1 handshake) and an integration suite
-for the HTTP transport (a loopback HTTP client exercising URI routing and the
-cookie session semantics) run on `native_sim`:
+including a full client-side security-1 handshake), an integration suite for
+the HTTP transport (a loopback HTTP client exercising URI routing and the
+cookie session semantics) and a unit test for the simulated Wi-Fi backend run
+on `native_sim`:
 
 ```sh
 west twister -T network-provisioning-zephyr/tests -p native_sim --inline-logs
 ```
 
-CI runs the same suites plus `esp32s3_devkitc` and `esp32c3_devkitm` builds of
-both samples against the Zephyr release pinned in [`west.yml`](west.yml) on
-every push and pull request; moving to a newer stable release is a one-line
-bump of that pin.
+A **BabbleSim end-to-end test** (`tests/bsim/ble_e2e`) exercises the BLE
+transport and the whole manager headlessly: a Zephyr "tester" central drives a
+full provisioning flow (sec1 handshake, scan, config, status) over a simulated
+radio against the device, which runs the real manager backed by a fake Wi-Fi
+driver ([`sim/wifi`](sim/wifi)). Both a successful provisioning and a
+wrong-password failure injection are checked. With [BabbleSim][bsim] built
+(`BSIM_OUT_PATH`/`BSIM_COMPONENTS_PATH` set):
+
+```sh
+BOARD=nrf52_bsim/native network-provisioning-zephyr/tests/bsim/compile.sh
+network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_success.sh
+network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_wrong_password.sh
+```
+
+[bsim]: https://babblesim.github.io/
+
+CI runs all of the above — the `native_sim` suites, the BabbleSim BLE
+end-to-end test, and `esp32s3_devkitc` and `esp32c3_devkitm` builds of both
+samples — against the Zephyr release pinned in [`west.yml`](west.yml) on every
+push and pull request; moving to a newer stable release is a one-line bump of
+that pin.
 
 ## Using it as a module in an existing workspace
 
