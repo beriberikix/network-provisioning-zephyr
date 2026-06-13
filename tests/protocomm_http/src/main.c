@@ -16,121 +16,20 @@
 #include <zephyr/ztest.h>
 #include <zephyr/net/socket.h>
 
-#include <psa/crypto.h>
-#include <pb_encode.h>
-#include <pb_decode.h>
-#include "session.pb.h"
-
 #include "protocomm.h"
 #include "security.h"
 #include "network_prov_internal.h"
+#include "prov_client.h"
 
 #define SERVER_ADDR "127.0.0.1"
 #define SERVER_PORT 80
 
 #define VERSION_JSON "{\"prov\":{\"ver\":\"v1.1\",\"sec_ver\":1}}"
 
-#define PUBKEY_LEN  32
-#define RANDOM_LEN  16
-#define KEY_LEN     32
-#define POP         "abcd1234"
+#define POP "abcd1234"
 
 static struct protocomm *pc;
 static char cookie[64]; /* "session=<id>" captured from Set-Cookie */
-
-/* ------------------------------------------------------------------------- */
-/* Client-side security-1 implementation (same as tests/security1).          */
-
-struct client {
-	psa_key_id_t key;               /* client X25519 key pair */
-	uint8_t pubkey[PUBKEY_LEN];
-	uint8_t device_pubkey[PUBKEY_LEN];
-	psa_key_id_t session_key;       /* AES-256 */
-	psa_cipher_operation_t cipher;  /* persistent CTR keystream */
-};
-
-static void client_keygen(struct client *c)
-{
-	zassert_equal(psa_crypto_init(), PSA_SUCCESS);
-
-	psa_key_attributes_t attr = psa_key_attributes_init();
-
-	psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_DERIVE);
-	psa_set_key_algorithm(&attr, PSA_ALG_ECDH);
-	psa_set_key_type(&attr, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_MONTGOMERY));
-	psa_set_key_bits(&attr, 255);
-	zassert_equal(psa_generate_key(&attr, &c->key), PSA_SUCCESS);
-	psa_reset_key_attributes(&attr);
-
-	size_t olen = 0;
-
-	zassert_equal(psa_export_public_key(c->key, c->pubkey, sizeof(c->pubkey),
-					    &olen), PSA_SUCCESS);
-	zassert_equal(olen, PUBKEY_LEN);
-}
-
-static void client_derive(struct client *c, const char *pop,
-			  const uint8_t *device_random)
-{
-	uint8_t shared[KEY_LEN];
-	size_t shared_len = 0;
-
-	zassert_equal(psa_raw_key_agreement(PSA_ALG_ECDH, c->key,
-					    c->device_pubkey, PUBKEY_LEN,
-					    shared, sizeof(shared), &shared_len),
-		      PSA_SUCCESS);
-	zassert_equal(shared_len, KEY_LEN);
-
-	if (pop != NULL && pop[0] != '\0') {
-		uint8_t hash[KEY_LEN];
-		size_t hlen = 0;
-
-		zassert_equal(psa_hash_compute(PSA_ALG_SHA_256, (const uint8_t *)pop,
-					       strlen(pop), hash, sizeof(hash),
-					       &hlen), PSA_SUCCESS);
-		for (size_t i = 0; i < KEY_LEN; i++) {
-			shared[i] ^= hash[i];
-		}
-	}
-
-	psa_key_attributes_t attr = psa_key_attributes_init();
-
-	psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT | PSA_KEY_USAGE_DECRYPT);
-	psa_set_key_algorithm(&attr, PSA_ALG_CTR);
-	psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
-	psa_set_key_bits(&attr, 256);
-	zassert_equal(psa_import_key(&attr, shared, KEY_LEN, &c->session_key),
-		      PSA_SUCCESS);
-	psa_reset_key_attributes(&attr);
-
-	c->cipher = psa_cipher_operation_init();
-	zassert_equal(psa_cipher_encrypt_setup(&c->cipher, c->session_key,
-					       PSA_ALG_CTR), PSA_SUCCESS);
-	zassert_equal(psa_cipher_set_iv(&c->cipher, device_random, RANDOM_LEN),
-		      PSA_SUCCESS);
-}
-
-static void client_xform(struct client *c, const uint8_t *in, size_t inlen,
-			 uint8_t *out)
-{
-	size_t olen = 0;
-
-	zassert_equal(psa_cipher_update(&c->cipher, in, inlen, out, inlen, &olen),
-		      PSA_SUCCESS);
-	zassert_equal(olen, inlen);
-}
-
-static void client_destroy(struct client *c)
-{
-	psa_cipher_abort(&c->cipher);
-	if (c->session_key != PSA_KEY_ID_NULL) {
-		psa_destroy_key(c->session_key);
-	}
-	if (c->key != PSA_KEY_ID_NULL) {
-		psa_destroy_key(c->key);
-	}
-	memset(c, 0, sizeof(*c));
-}
 
 /* ------------------------------------------------------------------------- */
 /* Minimal HTTP client.                                                      */
@@ -368,109 +267,47 @@ static int do_post(struct poster *p, const char *uri, const uint8_t *body,
 }
 
 /* ------------------------------------------------------------------------- */
-/* Security-1 handshake over HTTP.                                           */
+/* Security-1 handshake over HTTP, via the shared prov_client.               */
 
-static int post_session_msg(struct poster *p, const SessionData *cmd,
-			    SessionData *resp_out)
+/* prov_client transport adapter: POST the encoded request to "/<ep>" and hand
+ * the de-chunked body back in a k_malloc()'d buffer (freed by prov_client).
+ */
+static int http_xport(void *ctx, const char *ep, const uint8_t *in, size_t inlen,
+		      uint8_t **out, size_t *outlen)
 {
-	uint8_t buf[128];
-	pb_ostream_t ostream = pb_ostream_from_buffer(buf, sizeof(buf));
+	struct poster *p = ctx;
+	char uri[64];
 
-	zassert_true(pb_encode(&ostream, SessionData_fields, cmd),
-		     "encode failed: %s", PB_GET_ERROR(&ostream));
+	snprintf(uri, sizeof(uri), "/%s", ep);
 
 	uint8_t resp[256];
-	int rlen = do_post(p, "/prov-session", buf, ostream.bytes_written,
-			   resp, sizeof(resp));
+	int rlen = do_post(p, uri, in, inlen, resp, sizeof(resp));
 
 	if (rlen < 0) {
 		return rlen;
 	}
 
-	pb_istream_t istream = pb_istream_from_buffer(resp, rlen);
+	uint8_t *buf = k_malloc(rlen > 0 ? (size_t)rlen : 1);
 
-	zassert_true(pb_decode(&istream, SessionData_fields, resp_out),
-		     "decode failed: %s", PB_GET_ERROR(&istream));
-	return 0;
-}
-
-/* Full security-1 handshake; returns the Command1 result (0 on success). The
- * two-step shape makes it sensitive to transport session resets: a reset
- * between Command0 and Command1 fails with "command1 before command0".
- */
-static int run_handshake(struct poster *p, struct client *c)
-{
-	client_keygen(c);
-
-	SessionData cmd0 = SessionData_init_default;
-
-	cmd0.sec_ver = SecSchemeVersion_SecScheme1;
-	cmd0.which_proto = SessionData_sec1_tag;
-	cmd0.proto.sec1.msg = Sec1MsgType_Session_Command0;
-	cmd0.proto.sec1.which_payload = Sec1Payload_sc0_tag;
-	cmd0.proto.sec1.payload.sc0.client_pubkey.size = PUBKEY_LEN;
-	memcpy(cmd0.proto.sec1.payload.sc0.client_pubkey.bytes, c->pubkey,
-	       PUBKEY_LEN);
-
-	SessionData resp0 = SessionData_init_default;
-
-	zassert_equal(post_session_msg(p, &cmd0, &resp0), 0, "command0 failed");
-	zassert_equal(resp0.proto.sec1.msg, Sec1MsgType_Session_Response0);
-	zassert_equal(resp0.proto.sec1.payload.sr0.status, Status_Success);
-	zassert_equal(resp0.proto.sec1.payload.sr0.device_pubkey.size, PUBKEY_LEN);
-	zassert_equal(resp0.proto.sec1.payload.sr0.device_random.size, RANDOM_LEN);
-	memcpy(c->device_pubkey, resp0.proto.sec1.payload.sr0.device_pubkey.bytes,
-	       PUBKEY_LEN);
-
-	client_derive(c, POP, resp0.proto.sec1.payload.sr0.device_random.bytes);
-
-	/* client_verify = keystream[0..31] XOR device_pubkey */
-	uint8_t client_verify[PUBKEY_LEN];
-
-	client_xform(c, c->device_pubkey, PUBKEY_LEN, client_verify);
-
-	SessionData cmd1 = SessionData_init_default;
-
-	cmd1.sec_ver = SecSchemeVersion_SecScheme1;
-	cmd1.which_proto = SessionData_sec1_tag;
-	cmd1.proto.sec1.msg = Sec1MsgType_Session_Command1;
-	cmd1.proto.sec1.which_payload = Sec1Payload_sc1_tag;
-	cmd1.proto.sec1.payload.sc1.client_verify_data.size = PUBKEY_LEN;
-	memcpy(cmd1.proto.sec1.payload.sc1.client_verify_data.bytes,
-	       client_verify, PUBKEY_LEN);
-
-	SessionData resp1 = SessionData_init_default;
-	int ret = post_session_msg(p, &cmd1, &resp1);
-
-	if (ret != 0) {
-		return ret;
+	if (buf == NULL) {
+		return -ENOMEM;
 	}
-
-	zassert_equal(resp1.proto.sec1.msg, Sec1MsgType_Session_Response1);
-	zassert_equal(resp1.proto.sec1.payload.sr1.status, Status_Success);
-	zassert_equal(resp1.proto.sec1.payload.sr1.device_verify_data.size,
-		      PUBKEY_LEN);
-
-	/* device_verify = keystream[32..63] XOR client_pubkey */
-	uint8_t check[PUBKEY_LEN];
-
-	client_xform(c, resp1.proto.sec1.payload.sr1.device_verify_data.bytes,
-		     PUBKEY_LEN, check);
-	zassert_mem_equal(check, c->pubkey, PUBKEY_LEN,
-			  "device verify data mismatch");
+	memcpy(buf, resp, rlen);
+	*out = buf;
+	*outlen = rlen;
 	return 0;
 }
 
 /* Encrypted round trip through the echo endpoint; the shared CTR keystream
  * must be in lock-step or the decrypted reply is garbage.
  */
-static int encrypted_echo(struct poster *p, struct client *c, const char *msg)
+static int encrypted_echo(struct poster *p, struct prov_client *c, const char *msg)
 {
 	size_t mlen = strlen(msg);
 	uint8_t enc[64];
 
 	zassert_true(mlen <= sizeof(enc));
-	client_xform(c, (const uint8_t *)msg, mlen, enc);
+	zassert_equal(prov_client_xform(c, (const uint8_t *)msg, mlen, enc), 0);
 
 	uint8_t out[128];
 	int outlen = do_post(p, "/prov-config", enc, mlen, out, sizeof(out));
@@ -482,7 +319,7 @@ static int encrypted_echo(struct poster *p, struct client *c, const char *msg)
 	char plain[80];
 
 	zassert_true(outlen < (int)sizeof(plain));
-	client_xform(c, out, outlen, (uint8_t *)plain);
+	zassert_equal(prov_client_xform(c, out, outlen, (uint8_t *)plain), 0);
 	plain[outlen] = '\0';
 
 	char expect[80];
@@ -536,13 +373,14 @@ ZTEST(protocomm_http, test_02_sec1_session_per_request_connections)
 	 * session carried purely by the cookie.
 	 */
 	struct poster p = { .sock = -1, .send_cookie = true };
-	struct client c = {0};
+	struct prov_client c;
 
-	zassert_equal(run_handshake(&p, &c), 0, "handshake failed");
+	prov_client_init(&c, http_xport, &p);
+	zassert_equal(prov_client_handshake(&c, POP), 0, "handshake failed");
 	zassert_equal(encrypted_echo(&p, &c, "hello-over-http"), 0);
 	zassert_equal(encrypted_echo(&p, &c, "second message"), 0);
 
-	client_destroy(&c);
+	prov_client_destroy(&c);
 }
 
 ZTEST(protocomm_http, test_03_cookie_reset_semantics)
@@ -552,9 +390,10 @@ ZTEST(protocomm_http, test_03_cookie_reset_semantics)
 	 * keystream dead) so an unknown client can never ride along.
 	 */
 	struct poster p = { .sock = -1, .send_cookie = true };
-	struct client c = {0};
+	struct prov_client c;
 
-	zassert_equal(run_handshake(&p, &c), 0, "handshake failed");
+	prov_client_init(&c, http_xport, &p);
+	zassert_equal(prov_client_handshake(&c, POP), 0, "handshake failed");
 	zassert_equal(encrypted_echo(&p, &c, "before reset"), 0);
 
 	char saved_cookie[sizeof(cookie)];
@@ -572,14 +411,15 @@ ZTEST(protocomm_http, test_03_cookie_reset_semantics)
 	/* The old security session must be gone. */
 	zassert_true(encrypted_echo(&p, &c, "stale keystream") < 0,
 		     "request with the old session state should fail");
-	client_destroy(&c);
+	prov_client_destroy(&c);
 
 	/* New session: a fresh handshake under the new cookie works. */
-	struct client c2 = {0};
+	struct prov_client c2;
 
-	zassert_equal(run_handshake(&p, &c2), 0, "re-handshake failed");
+	prov_client_init(&c2, http_xport, &p);
+	zassert_equal(prov_client_handshake(&c2, POP), 0, "re-handshake failed");
 	zassert_equal(encrypted_echo(&p, &c2, "second session"), 0);
-	client_destroy(&c2);
+	prov_client_destroy(&c2);
 }
 
 ZTEST(protocomm_http, test_04_keepalive_like_esp_prov)
@@ -600,13 +440,14 @@ ZTEST(protocomm_http, test_04_keepalive_like_esp_prov)
 		     "no session cookie issued");
 
 	struct poster p = { .sock = sock, .send_cookie = true };
-	struct client c = {0};
+	struct prov_client c;
 
-	zassert_equal(run_handshake(&p, &c), 0, "keep-alive handshake failed");
+	prov_client_init(&c, http_xport, &p);
+	zassert_equal(prov_client_handshake(&c, POP), 0, "keep-alive handshake failed");
 	zassert_equal(encrypted_echo(&p, &c, "hello-keepalive"), 0);
 	zassert_equal(encrypted_echo(&p, &c, "still in lock-step"), 0);
 
-	client_destroy(&c);
+	prov_client_destroy(&c);
 	zsock_close(sock);
 }
 
