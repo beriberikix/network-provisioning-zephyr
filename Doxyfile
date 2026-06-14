@@ -1,0 +1,35 @@
+# Doxygen configuration for the published API reference.
+#
+# Generates HTML from the public headers under include/ with README.md as the
+# landing page. Built and deployed to GitHub Pages by .github/workflows/docs.yml.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+PROJECT_NAME           = "network-provisioning-zephyr"
+PROJECT_BRIEF          = "Zephyr port of Espressif's network provisioning protocol (Wi-Fi over BLE / SoftAP / console)"
+
+OUTPUT_DIRECTORY       = doxygen
+HTML_OUTPUT            = html
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+# Public API surface + the README as the main page.
+INPUT                  = README.md include
+USE_MDFILE_AS_MAINPAGE = README.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.md
+
+# The public headers are fully documented; surface everything and stay quiet
+# about anything that slips through rather than failing the build.
+EXTRACT_ALL            = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+JAVADOC_AUTOBRIEF      = YES
+MARKDOWN_SUPPORT       = YES
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+
+# Navigation / browsing niceties.
+GENERATE_TREEVIEW      = YES
+SOURCE_BROWSER         = YES
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
