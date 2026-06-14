@@ -400,6 +400,27 @@ static int poll_status(struct prov_client *c)
 	return WifiStationState_Connecting;
 }
 
+/* Round-trip through the application custom endpoint over the secure session
+ * (network_prov_mgr_endpoint_create/register on the DUT). The DUT echoes
+ * "echo:<msg>".
+ */
+static void verify_custom_endpoint(struct prov_client *c)
+{
+	uint8_t resp[64];
+	size_t rn = 0;
+	char expect[64];
+	int n = snprintf(expect, sizeof(expect), "echo:%s", PROV_TEST_CUSTOM_MSG);
+
+	TEST_ASSERT(n > 0 && n < (int)sizeof(expect), "expect string truncated");
+	TEST_ASSERT(secure_exchange(c, PROV_TEST_CUSTOM_EP,
+				    (const uint8_t *)PROV_TEST_CUSTOM_MSG,
+				    strlen(PROV_TEST_CUSTOM_MSG), resp, sizeof(resp),
+				    &rn) == 0, "custom endpoint exchange failed");
+	TEST_ASSERT(rn == (size_t)n && memcmp(resp, expect, n) == 0,
+		    "custom endpoint echo mismatch");
+	TEST_PRINT("tester: custom endpoint echo OK");
+}
+
 static bool mfg_seen;
 
 static bool mfg_ad_cb(struct bt_data *data, void *user_data)
@@ -473,6 +494,7 @@ static void tester_run(bool expect_success)
 		    "security-1 handshake failed");
 	TEST_PRINT("tester: secure session established");
 
+	verify_custom_endpoint(&c);
 	do_scan(&c);
 	do_config(&c);
 

@@ -153,13 +153,50 @@ static void ensure_session(void)
 	start_new_session();
 }
 
+/* Recover the endpoint name from the request path for the fallback resource:
+ * skip the leading '/' and stop at the query string, into @p out. If the name
+ * does not fit @p cap, @p out is set to "" so it resolves to an unknown
+ * endpoint rather than being silently truncated onto a valid one.
+ */
+static void ep_name_from_url(struct http_client_ctx *client, char *out, size_t cap)
+{
+	const char *p = client->url_buffer;
+	size_t i = 0;
+
+	if (*p == '/') {
+		p++;
+	}
+	while (p[i] != '\0' && p[i] != '?') {
+		if (i >= cap - 1) {
+			out[0] = '\0'; /* too long to be a known endpoint */
+			return;
+		}
+		out[i] = p[i];
+		i++;
+	}
+	out[i] = '\0';
+}
+
 static int prov_http_handler(struct http_client_ctx *client,
 			     enum http_transaction_status status,
 			     const struct http_request_ctx *request_ctx,
 			     struct http_response_ctx *response_ctx,
 			     void *user_data)
 {
-	const char *ep_name = user_data;
+	/* Built-in resources pass the endpoint name in user_data; the fallback
+	 * resource (custom endpoints) passes NULL, so route by the request path.
+	 * The fallback name lives on the stack for this callback (no sharing
+	 * with a concurrent client's request).
+	 */
+	char fallback_name[PROTOCOMM_EP_NAME_MAX];
+	const char *ep_name;
+
+	if (user_data != NULL) {
+		ep_name = (const char *)user_data;
+	} else {
+		ep_name_from_url(client, fallback_name, sizeof(fallback_name));
+		ep_name = fallback_name;
+	}
 
 	if (status == HTTP_SERVER_TRANSACTION_ABORTED ||
 	    status == HTTP_SERVER_TRANSACTION_COMPLETE) {
@@ -251,10 +288,26 @@ HTTP_SERVER_REGISTER_HEADER_CAPTURE(prov_capture_cookie, "Cookie");
 
 static uint16_t prov_http_port = 80;
 
-HTTP_SERVICE_DEFINE(network_prov_http_service, NULL, &prov_http_port,
-		    CONFIG_HTTP_SERVER_MAX_CLIENTS, 4, NULL, NULL, NULL);
+/* Fallback resource: any URI not matched by the built-in resources below
+ * (i.e. an application custom endpoint) is routed here and dispatched by the
+ * endpoint name parsed from the request path. user_data == NULL selects the
+ * by-path routing in prov_http_handler().
+ */
+static struct http_resource_detail_dynamic prov_fallback_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+	},
+	.cb = prov_http_handler,
+	.user_data = NULL,
+};
 
-/* The manager's endpoint set is fixed, so the URI table is static. */
+HTTP_SERVICE_DEFINE(network_prov_http_service, NULL, &prov_http_port,
+		    CONFIG_HTTP_SERVER_MAX_CLIENTS, 4, NULL,
+		    &prov_fallback_detail.common, NULL);
+
+/* The built-in endpoints get exact-match resources (matched before the
+ * fallback); custom endpoints fall through to prov_fallback_detail. */
 #define PROV_HTTP_RESOURCE(_sym, _uri)                                         \
 	static struct http_resource_detail_dynamic _sym##_detail = {           \
 		.common = {                                                    \

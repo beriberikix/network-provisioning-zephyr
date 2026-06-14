@@ -168,4 +168,56 @@ ZTEST(manager_api, test_reset_wrappers_require_active)
 	network_prov_mgr_deinit();
 }
 
+static int dummy_handler(void *ctx, const uint8_t *in, size_t inlen,
+			 uint8_t **out, size_t *outlen)
+{
+	ARG_UNUSED(ctx);
+	ARG_UNUSED(in);
+	ARG_UNUSED(inlen);
+	ARG_UNUSED(out);
+	ARG_UNUSED(outlen);
+	return 0;
+}
+
+ZTEST(manager_api, test_custom_endpoint_api)
+{
+	struct network_prov_mgr_config cfg = {
+		.scheme = NETWORK_PROV_SCHEME_SOFTAP,
+		.app_event_handler = { .event_cb = evt },
+		.wifi_conn_attempts = 0,
+	};
+
+	memset(&t, 0, sizeof(t));
+	k_sem_init(&t.ev, 0, 4);
+	fake_wifi_reset();
+	program_network();
+	zassert_equal(network_prov_mgr_init(cfg), 0);
+
+	/* Before start: create succeeds; duplicates, built-in collisions and
+	 * over-long names are rejected; register requires the service started.
+	 */
+	zassert_equal(network_prov_mgr_endpoint_create("my-ep"), 0);
+	zassert_equal(network_prov_mgr_endpoint_create("my-ep"), -EALREADY);
+	zassert_equal(network_prov_mgr_endpoint_create("prov-scan"), -EALREADY);
+	zassert_equal(network_prov_mgr_endpoint_create("0123456789abcdef"), -EINVAL);
+	zassert_equal(network_prov_mgr_endpoint_register("my-ep", dummy_handler, NULL),
+		      -EPERM);
+
+	zassert_equal(network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1,
+							  "abcd1234", "PROV_T", NULL), 0);
+
+	/* After start: no new endpoints; register the created one; unknown name
+	 * and unregister report as expected.
+	 */
+	zassert_equal(network_prov_mgr_endpoint_create("late"), -EPERM);
+	zassert_equal(network_prov_mgr_endpoint_register("my-ep", dummy_handler, NULL), 0);
+	zassert_equal(network_prov_mgr_endpoint_register("nope", dummy_handler, NULL),
+		      -ENOENT);
+	zassert_equal(network_prov_mgr_endpoint_unregister("my-ep"), 0);
+	zassert_equal(network_prov_mgr_endpoint_unregister("nope"), -ENOENT);
+
+	network_prov_mgr_stop_provisioning();
+	network_prov_mgr_deinit();
+}
+
 ZTEST_SUITE(manager_api, NULL, NULL, NULL, NULL, NULL);

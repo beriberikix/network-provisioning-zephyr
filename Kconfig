@@ -77,6 +77,16 @@ config NETWORK_PROV_BLE_MAX_RESP_LEN
 	  for the biggest encoded (and encrypted) response, dominated by a page
 	  of scan results.
 
+config NETWORK_PROV_MAX_CUSTOM_ENDPOINTS
+	int "Maximum application-defined custom protocomm endpoints"
+	default 3
+	range 0 3
+	help
+	  Upper bound on endpoints an application may add with
+	  network_prov_mgr_endpoint_create(). Bounded by the protocomm endpoint
+	  table (PROTOCOMM_MAX_ENDPOINTS = 8) minus the 5 built-in endpoints;
+	  raising it beyond 3 also requires bumping PROTOCOMM_MAX_ENDPOINTS.
+
 config NETWORK_PROV_AUTOSTOP_TIMEOUT_MS
 	int "Auto-stop grace period after a successful connection (ms)"
 	default 30000

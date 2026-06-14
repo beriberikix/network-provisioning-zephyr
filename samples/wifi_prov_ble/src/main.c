@@ -11,6 +11,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <string.h>
+#include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
@@ -38,6 +40,28 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 #define SAVED_CONN_TIMEOUT     K_SECONDS(45)
 #define SAVED_CONN_BACKOFF_MAX 16 /* seconds */
 
+/* Example custom endpoint handler: echoes the request back to the app. */
+static int app_custom_handler(void *ctx, const uint8_t *inbuf, size_t inlen,
+			      uint8_t **outbuf, size_t *outlen)
+{
+	ARG_UNUSED(ctx);
+	if (inlen == 0) {
+		*outbuf = NULL;
+		*outlen = 0;
+		return 0;
+	}
+
+	uint8_t *out = k_malloc(inlen);
+
+	if (out == NULL) {
+		return -ENOMEM;
+	}
+	memcpy(out, inbuf, inlen);
+	*outbuf = out;
+	*outlen = inlen;
+	return 0;
+}
+
 static void prov_event(void *user_data, enum network_prov_cb_event event,
 		       void *event_data)
 {
@@ -48,6 +72,9 @@ static void prov_event(void *user_data, enum network_prov_cb_event event,
 		LOG_INF("Provisioning started; connect with the ESP provisioning app");
 		LOG_INF("  device name : %s", PROV_DEVICE_NAME);
 		LOG_INF("  proof-of-pos: %s", PROV_POP[0] ? PROV_POP : "(none)");
+		/* Attach the custom endpoint's handler now the service is up. */
+		(void)network_prov_mgr_endpoint_register("custom-data",
+							 app_custom_handler, NULL);
 		break;
 	case NETWORK_PROV_CRED_RECV:
 		LOG_INF("Wi-Fi credentials received, connecting...");
@@ -268,6 +295,9 @@ int main(void)
 	 * (optional; lets a client negotiate app-specific features).
 	 */
 	static const char *const app_caps[] = {"sample"};
+
+	/* Create a custom application endpoint (handler registered on START). */
+	(void)network_prov_mgr_endpoint_create("custom-data");
 
 	(void)network_prov_mgr_set_app_info("wifi_prov_ble", "1.0", app_caps,
 					    ARRAY_SIZE(app_caps));

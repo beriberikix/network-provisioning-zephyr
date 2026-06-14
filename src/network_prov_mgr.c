@@ -57,6 +57,13 @@ static struct {
 	bool auto_stop;
 	uint32_t cleanup_delay_ms;
 	struct k_work_delayable teardown_work;
+	/* Application-defined custom endpoints (network_prov_mgr_endpoint_*). */
+	struct custom_ep {
+		char name[PROTOCOMM_EP_NAME_MAX];
+		network_prov_endpoint_handler_t handler;
+		void *ctx;
+		bool created;
+	} custom[CONFIG_NETWORK_PROV_MAX_CUSTOM_ENDPOINTS];
 } mgr;
 
 static void do_teardown(void);
@@ -104,6 +111,7 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 	mgr.auto_stop = true;
 	mgr.cleanup_delay_ms = 0;
 	mgr.app_info_json[0] = '\0'; /* don't leak a prior cycle's app-info */
+	memset(mgr.custom, 0, sizeof(mgr.custom)); /* nor custom endpoints */
 	k_sem_init(&mgr.done, 0, 1);
 	k_work_init_delayable(&mgr.teardown_work, teardown_work_fn);
 
@@ -238,6 +246,110 @@ overflow:
 	return -ENOMEM;
 }
 
+static bool is_builtin_ep(const char *name)
+{
+	return strcmp(name, EP_VERSION) == 0 || strcmp(name, EP_SESSION) == 0 ||
+	       strcmp(name, EP_SCAN) == 0 || strcmp(name, EP_CONFIG) == 0 ||
+	       strcmp(name, EP_CTRL) == 0;
+}
+
+static struct custom_ep *find_custom_ep(const char *name)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(mgr.custom); i++) {
+		if (mgr.custom[i].created && strcmp(mgr.custom[i].name, name) == 0) {
+			return &mgr.custom[i];
+		}
+	}
+	return NULL;
+}
+
+/* protocomm handler installed for every created custom endpoint; forwards to
+ * the application handler once registered, otherwise reports unsupported.
+ */
+static int custom_trampoline(void *priv, const uint8_t *inbuf, size_t inlen,
+			     uint8_t **outbuf, size_t *outlen)
+{
+	struct custom_ep *e = priv;
+
+	if (e->handler == NULL) {
+		return -ENOTSUP;
+	}
+	return e->handler(e->ctx, inbuf, inlen, outbuf, outlen);
+}
+
+int network_prov_mgr_endpoint_create(const char *ep_name)
+{
+	if (ep_name == NULL || ep_name[0] == '\0' ||
+	    strlen(ep_name) >= PROTOCOMM_EP_NAME_MAX) {
+		return -EINVAL;
+	}
+	if (!mgr.inited) {
+		return -EPERM;
+	}
+	if (mgr.started) {
+		/* Endpoints are added to protocomm (and the transport's service)
+		 * at start; creating one afterwards would not be advertised.
+		 */
+		return -EPERM;
+	}
+	if (is_builtin_ep(ep_name) || find_custom_ep(ep_name) != NULL) {
+		return -EALREADY;
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(mgr.custom); i++) {
+		if (!mgr.custom[i].created) {
+			strncpy(mgr.custom[i].name, ep_name, sizeof(mgr.custom[i].name) - 1);
+			mgr.custom[i].name[sizeof(mgr.custom[i].name) - 1] = '\0';
+			mgr.custom[i].handler = NULL;
+			mgr.custom[i].ctx = NULL;
+			mgr.custom[i].created = true;
+			return 0;
+		}
+	}
+	return -ENOSPC;
+}
+
+int network_prov_mgr_endpoint_register(const char *ep_name,
+				       network_prov_endpoint_handler_t handler,
+				       void *user_ctx)
+{
+	if (ep_name == NULL || handler == NULL) {
+		return -EINVAL;
+	}
+	if (!mgr.started) {
+		return -EPERM;
+	}
+
+	struct custom_ep *e = find_custom_ep(ep_name);
+
+	if (e == NULL) {
+		return -ENOENT;
+	}
+	/* Publish ctx before handler: the trampoline reads handler first, so a
+	 * request racing registration must not see a handler with a stale ctx.
+	 */
+	e->ctx = user_ctx;
+	compiler_barrier();
+	e->handler = handler;
+	return 0;
+}
+
+int network_prov_mgr_endpoint_unregister(const char *ep_name)
+{
+	if (ep_name == NULL) {
+		return -EINVAL;
+	}
+
+	struct custom_ep *e = find_custom_ep(ep_name);
+
+	if (e == NULL) {
+		return -ENOENT;
+	}
+	e->handler = NULL;
+	e->ctx = NULL;
+	return 0;
+}
+
 static void build_version_json(enum network_prov_security security, const char *pop)
 {
 	int sec_ver = (security == NETWORK_PROV_SECURITY_1) ? 1 : 0;
@@ -308,6 +420,21 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 				     network_prov_wifi_ctrl_handler, NULL);
 	if (ret) {
 		goto err;
+	}
+
+	/* Add application-defined custom endpoints before the transport builds
+	 * its service, so each gets a BLE characteristic / HTTP route. The
+	 * trampoline forwards to the app handler once it is registered.
+	 */
+	for (size_t i = 0; i < ARRAY_SIZE(mgr.custom); i++) {
+		if (!mgr.custom[i].created) {
+			continue;
+		}
+		ret = protocomm_add_endpoint(mgr.pc, mgr.custom[i].name,
+					     custom_trampoline, &mgr.custom[i]);
+		if (ret) {
+			goto err;
+		}
 	}
 
 	switch (mgr.scheme) {

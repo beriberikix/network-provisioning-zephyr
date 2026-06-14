@@ -80,5 +80,9 @@ run_prov "wrong password -> Incorrect Password" "Incorrect Password" \
 	--ssid "$GOOD_SSID" --passphrase wrongpassword123
 run_prov "unknown SSID -> Incorrect SSID" "Incorrect SSID" \
 	--ssid Ghost --passphrase whatever12345
+# Custom application endpoint reached over the SoftAP fallback route: the DUT
+# echoes "echo:<data>"; esp_prov prints the decrypted response.
+run_prov "custom endpoint echo" "echo:hello-custom" \
+	--ssid "$GOOD_SSID" --passphrase "$GOOD_PASS" --custom_data hello-custom
 
 echo "PASS: esp_prov SoftAP scenarios all behaved as expected"
