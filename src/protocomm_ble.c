@@ -206,6 +206,12 @@ static ssize_t write_ep(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	return len;
 }
 
+/**
+ * Build and register the dynamic GATT service from the current protocomm
+ * endpoints: one characteristic per endpoint, each carrying a 0x2901 user
+ * description with the endpoint name — which is how the apps map endpoint names
+ * to characteristic handles.
+ */
 static void build_service(void)
 {
 	size_t n = protocomm_endpoint_count(g_pc);

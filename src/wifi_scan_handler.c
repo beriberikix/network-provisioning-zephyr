@@ -148,6 +148,12 @@ static Status do_scan_start(void)
 	return Status_Success;
 }
 
+/**
+ * Stamp Status_Success on a scan response and nanopb-encode it into a freshly
+ * allocated @p outbuf / @p outlen (freed by the caller).
+ *
+ * @return 0 on success, negative errno on an encode failure.
+ */
 static int encode_resp(NetworkScanPayload *resp, uint8_t **outbuf, size_t *outlen)
 {
 	resp->status = Status_Success;

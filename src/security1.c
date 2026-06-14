@@ -132,8 +132,13 @@ static void sec1_cleanup(void *vctx)
 	k_free(ctx);
 }
 
-/* Derive the AES key from the ECDH shared secret and the proof-of-possession,
- * import it, and arm the CTR keystream with device_random as the IV.
+/**
+ * Derive the AES-256 session key from the ECDH shared secret and the
+ * proof-of-possession, import it, and arm the CTR keystream with device_random
+ * as the IV. With a PoP the key is shared_secret XOR SHA-256(pop), so a wrong
+ * PoP yields a different key and the Command1 verify fails.
+ *
+ * @return 0 on success, -EIO on any PSA crypto failure.
  */
 static int derive_session_key(struct sec1_ctx *ctx)
 {
@@ -194,7 +199,14 @@ static int derive_session_key(struct sec1_ctx *ctx)
 	return 0;
 }
 
-/* Run @p inlen bytes through the shared CTR keystream (encrypt == decrypt). */
+/**
+ * Run @p inlen bytes through the shared AES-CTR keystream. CTR makes encrypt and
+ * decrypt the same transform; the persistent cipher operation keeps the counter
+ * advancing across calls, so request and response stay in keystream lock-step
+ * (a missed or reordered message desynchronises the stream).
+ *
+ * @return 0 on success, -EIO if the PSA cipher update fails.
+ */
 static int ctr_xform(struct sec1_ctx *ctx, const uint8_t *in, size_t inlen,
 		     uint8_t *out, size_t *outlen)
 {

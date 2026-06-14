@@ -14,51 +14,93 @@
 extern "C" {
 #endif
 
-/** Emit a lifecycle event to the registered application handler. */
+/** Emit a lifecycle event to the registered application handler (no-op if none). */
 void network_prov_emit_event(enum network_prov_cb_event event, void *event_data);
 
-/* prov-config endpoint (Wi-Fi credentials + connection state machine).
- * conn_attempts: max connection attempts per provisioning try (0 = single
- * attempt, fail immediately).
+/*
+ * prov-config endpoint: Wi-Fi credentials + connection state machine.
+ */
+
+/**
+ * Initialise the Wi-Fi config handler and its connection state machine.
+ *
+ * @param conn_attempts Max connection attempts per provisioning try (0 = a
+ *                      single attempt whose failure is reported immediately).
+ * @return 0 on success, negative errno otherwise.
  */
 int network_prov_wifi_config_init(uint32_t conn_attempts);
+/** Tear down the Wi-Fi config handler and release its net_mgmt callbacks. */
 void network_prov_wifi_config_deinit(void);
+/** Reset the connection state machine (clears in-flight creds and attempt counters). */
 void network_prov_wifi_config_reset(void);
+/** Connection attempts left for the credentials currently being tried. */
 uint32_t network_prov_wifi_config_remaining_attempts(void);
-/* Stage @p ssid / @p psk and run the shared apply path (persist + connect +
+/**
+ * Stage @p ssid / @p psk and run the shared apply path (persist + connect +
  * retry + events) — backs network_prov_mgr_configure_wifi_sta().
+ *
+ * @return 0 on success, negative errno on failure.
  */
 int network_prov_wifi_config_set_and_apply(const uint8_t *ssid, size_t ssid_len,
 					   const uint8_t *psk, size_t psk_len);
+/** protocomm handler for the prov-config endpoint (NetworkConfigPayload). */
 int network_prov_wifi_config_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				     uint8_t **outbuf, size_t *outlen);
 
-/* prov-ctrl endpoint (Wi-Fi state-machine reset / re-provision). */
+/*
+ * prov-ctrl endpoint: Wi-Fi state-machine reset / re-provision.
+ */
+
+/** protocomm handler for the prov-ctrl endpoint (NetworkCtrlPayload). */
 int network_prov_wifi_ctrl_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				   uint8_t **outbuf, size_t *outlen);
 
-/* prov-scan endpoint (Wi-Fi scanning). */
+/*
+ * prov-scan endpoint: Wi-Fi scanning.
+ */
+
+/** Initialise the scan handler. @return 0 on success, negative errno otherwise. */
 int network_prov_wifi_scan_init(void);
+/** Tear down the scan handler. */
 void network_prov_wifi_scan_deinit(void);
+/** protocomm handler for the prov-scan endpoint (NetworkScanPayload). */
 int network_prov_wifi_scan_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				   uint8_t **outbuf, size_t *outlen);
 
-/* BLE transport. */
+/*
+ * Transport back-ends. Each is fronted by a network_prov_scheme vtable; the
+ * start() call registers the protocomm endpoints with the transport and brings
+ * it up (returns 0 or a negative errno), and the void stop() tears it down.
+ */
+
+/**
+ * Start the BLE (GATT) transport: register the dynamic GATT service and
+ * advertise @p device_name.
+ */
 int network_prov_ble_start(struct protocomm *pc, const char *device_name);
+/** Stop the BLE transport (unregister the GATT service, stop advertising). */
 void network_prov_ble_stop(void);
 
-/* SoftAP transport (protocomm over HTTP on a device-hosted AP). */
+/**
+ * Start the SoftAP transport: bring up the access point and DHCPv4 server, then
+ * serve protocomm over HTTP. @p service_name is the AP SSID; @p service_key the
+ * WPA2-PSK password (NULL/empty for an open AP).
+ */
 int network_prov_softap_start(struct protocomm *pc, const char *service_name,
 			      const char *service_key);
+/** Stop the SoftAP transport (HTTP server + access point + DHCP server). */
 void network_prov_softap_stop(void);
-/* HTTP/protocomm glue only (no AP bring-up) — split out so the loopback
- * integration test can exercise it on native_sim.
+/**
+ * Start only the HTTP/protocomm glue, without bringing up an access point —
+ * split out so the loopback integration test can exercise it on native_sim.
  */
 int network_prov_softap_http_start(struct protocomm *pc);
+/** Stop the HTTP/protocomm glue started by network_prov_softap_http_start(). */
 void network_prov_softap_http_stop(void);
 
-/* Console transport (protocomm over the device shell). */
+/** Start the console transport (protocomm over the device shell). */
 int network_prov_console_start(struct protocomm *pc);
+/** Stop the console transport. */
 void network_prov_console_stop(void);
 
 #ifdef __cplusplus

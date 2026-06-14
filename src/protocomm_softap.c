@@ -92,7 +92,13 @@ static bool str_ieq(const char *a, const char *b)
 	return *a == *b;
 }
 
-/* Extract "session=<id>" from a captured Cookie header; false if absent. */
+/**
+ * Extract the "session=<id>" value from a captured Cookie header.
+ *
+ * @param out_id Set to the parsed session id when found.
+ * @return true if a well-formed session cookie was present; false if absent or
+ *         malformed (a bad value is rejected so it cannot alias a valid session).
+ */
 static bool get_cookie_session(const struct http_request_ctx *request_ctx,
 			       uint32_t *out_id)
 {
@@ -146,6 +152,11 @@ static uint32_t req_cookie_id;
  */
 static const struct http_client_ctx *req_client;
 
+/**
+ * Continue the request's session if its cookie matches the active one, otherwise
+ * start a fresh protocomm session — so a request with no cookie (or a stale one)
+ * can never ride an already-established security session.
+ */
 static void ensure_session(void)
 {
 	if (req_cookie_present && session_valid && req_cookie_id == session_id) {
@@ -178,6 +189,14 @@ static void ep_name_from_url(struct http_client_ctx *client, char *out, size_t c
 	out[i] = '\0';
 }
 
+/**
+ * HTTP resource callback fronting every protocomm endpoint. Resolves the
+ * endpoint (built-in resources pass the name in @p user_data; the catch-all
+ * fallback routes by URL path), enforces the cookie session, runs the protocomm
+ * request once the body is complete, and streams the response back. The server
+ * invokes it across several transaction callbacks per request — see the
+ * req_cookie_* note above for why the cookie is latched on the first one.
+ */
 static int prov_http_handler(struct http_client_ctx *client,
 			     enum http_transaction_status status,
 			     const struct http_request_ctx *request_ctx,

@@ -1,7 +1,9 @@
 /*
  * Manager C-API tests for the Tier-1 parity additions: auto-stop /
  * disable_auto_stop / is_sm_idle (E1) and the programmatic
- * configure_wifi_sta + state-reset wrappers (E2).
+ * configure_wifi_sta + state-reset wrappers (E2). Also covers the
+ * credential-store and synchronisation helpers: is_provisioned /
+ * reset_wifi_provisioning, get_wifi_remaining_conn_attempts and wait().
  *
  * Runs the real manager over the SoftAP transport on native_sim, backed by the
  * fake Wi-Fi driver (credential-matching mode), so the connect/retry/event path
@@ -216,6 +218,122 @@ ZTEST(manager_api, test_custom_endpoint_api)
 		      -ENOENT);
 	zassert_equal(network_prov_mgr_endpoint_unregister("my-ep"), 0);
 	zassert_equal(network_prov_mgr_endpoint_unregister("nope"), -ENOENT);
+
+	network_prov_mgr_stop_provisioning();
+	network_prov_mgr_deinit();
+}
+
+ZTEST(manager_api, test_is_provisioned_and_reset)
+{
+	bool prov = true;
+
+	/* Guards: NULL arg is rejected; reset requires an initialised manager. */
+	zassert_equal(network_prov_mgr_is_provisioned(NULL), -EINVAL);
+	zassert_equal(network_prov_mgr_reset_wifi_provisioning(), -EPERM,
+		      "reset must require an initialised manager");
+
+	start_mgr();
+
+	/* Clean baseline: an earlier test may have left credentials in the
+	 * native_sim flash-backed wifi_credentials store.
+	 */
+	zassert_equal(network_prov_mgr_reset_wifi_provisioning(), 0);
+	zassert_equal(network_prov_mgr_is_provisioned(&prov), 0);
+	zassert_false(prov, "should be unprovisioned after erase");
+
+	/* A successful credential apply persists to the wifi_credentials store. */
+	zassert_equal(network_prov_mgr_configure_wifi_sta(GOOD_SSID, GOOD_PASS), 0);
+	zassert_equal(k_sem_take(&t.ev, K_SECONDS(2)), 0, "no result event");
+	zassert_true(t.success, "expected CRED_SUCCESS");
+	zassert_equal(network_prov_mgr_is_provisioned(&prov), 0);
+	zassert_true(prov, "should report provisioned after success");
+
+	/* The explicit factory-reset path erases them again. */
+	zassert_equal(network_prov_mgr_reset_wifi_provisioning(), 0);
+	zassert_equal(network_prov_mgr_is_provisioned(&prov), 0);
+	zassert_false(prov, "should be unprovisioned after factory reset");
+
+	network_prov_mgr_stop_provisioning();
+	network_prov_mgr_deinit();
+}
+
+ZTEST(manager_api, test_remaining_conn_attempts)
+{
+	struct network_prov_mgr_config cfg = {
+		.scheme = &network_prov_scheme_softap,
+		.app_event_handler = { .event_cb = evt },
+		.wifi_conn_attempts = 2,
+	};
+	uint32_t remaining = 0;
+
+	/* Not started yet: the query is rejected. */
+	zassert_equal(network_prov_mgr_get_wifi_remaining_conn_attempts(&remaining),
+		      -EINVAL, "query must require an active service");
+
+	memset(&t, 0, sizeof(t));
+	k_sem_init(&t.ev, 0, 4);
+	fake_wifi_reset();
+	program_network();
+
+	zassert_equal(network_prov_mgr_init(cfg), 0);
+	zassert_equal(network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1,
+							  "abcd1234", "PROV_T", NULL), 0);
+
+	/* NULL out-pointer is rejected even when active. */
+	zassert_equal(network_prov_mgr_get_wifi_remaining_conn_attempts(NULL), -EINVAL);
+
+	/* Before any connect attempt: the full budget is available. */
+	zassert_equal(network_prov_mgr_get_wifi_remaining_conn_attempts(&remaining), 0);
+	zassert_equal(remaining, 2, "expected the full attempt budget");
+
+	/* A wrong password burns both attempts (one initial + one retry) before
+	 * the final CRED_FAIL, leaving zero remaining.
+	 */
+	zassert_equal(network_prov_mgr_configure_wifi_sta(GOOD_SSID, "wrongpassword"), 0);
+	zassert_equal(k_sem_take(&t.ev, K_SECONDS(5)), 0, "no CRED_FAIL after retries");
+	zassert_true(t.fail, "expected CRED_FAIL");
+	zassert_equal(network_prov_mgr_get_wifi_remaining_conn_attempts(&remaining), 0);
+	zassert_equal(remaining, 0, "attempts must be exhausted after final failure");
+
+	network_prov_mgr_stop_provisioning();
+	network_prov_mgr_deinit();
+}
+
+/* Runs the blocking wait() on a helper thread so the test can bound it with a
+ * timed join: a regression then fails fast instead of hanging the whole suite
+ * on wait()'s internal K_FOREVER until the harness timeout.
+ */
+K_THREAD_STACK_DEFINE(waiter_stack, 2048);
+static struct k_thread waiter_thread;
+
+static void waiter_fn(void *a, void *b, void *c)
+{
+	ARG_UNUSED(a);
+	ARG_UNUSED(b);
+	ARG_UNUSED(c);
+	network_prov_mgr_wait(); /* blocks on the manager's done semaphore */
+}
+
+ZTEST(manager_api, test_wait_unblocks_on_success)
+{
+	start_mgr();
+
+	/* Start the waiter before applying credentials. The done semaphore makes
+	 * this race-free: even if CRED_SUCCESS fires before wait() runs, the
+	 * pending give is taken immediately.
+	 */
+	k_thread_create(&waiter_thread, waiter_stack, K_THREAD_STACK_SIZEOF(waiter_stack),
+			waiter_fn, NULL, NULL, NULL,
+			K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
+
+	zassert_equal(network_prov_mgr_configure_wifi_sta(GOOD_SSID, GOOD_PASS), 0);
+
+	/* wait() must return once CRED_SUCCESS is emitted; the bounded join turns
+	 * a hang into a prompt failure.
+	 */
+	zassert_equal(k_thread_join(&waiter_thread, K_SECONDS(5)), 0,
+		      "wait() did not return after CRED_SUCCESS");
+	zassert_true(t.success, "expected CRED_SUCCESS");
 
 	network_prov_mgr_stop_provisioning();
 	network_prov_mgr_deinit();

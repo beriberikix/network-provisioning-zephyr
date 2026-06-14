@@ -167,6 +167,15 @@ static int handle_version(struct protocomm *pc, uint8_t **outbuf, size_t *outlen
 	return 0;
 }
 
+/**
+ * Handle a request on a data (non-session) endpoint, once the caller has
+ * confirmed a security session is open: decrypt it with the active security
+ * scheme (sec0 copies it through), run the endpoint handler on the plaintext,
+ * then re-encrypt the response into a fresh buffer.
+ *
+ * @return 0 on success, or a negative errno (e.g. -ENOMEM, or the handler's
+ *         error) on failure.
+ */
 static int handle_data(struct protocomm *pc, struct protocomm_ep *ep,
 		       const uint8_t *inbuf, size_t inlen,
 		       uint8_t **outbuf, size_t *outlen)

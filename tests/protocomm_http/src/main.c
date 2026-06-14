@@ -355,7 +355,7 @@ static void suite_teardown(void *fixture)
 	protocomm_delete(pc);
 }
 
-ZTEST(protocomm_http, test_01_proto_ver)
+ZTEST(protocomm_http, test_proto_ver)
 {
 	uint8_t resp[128];
 	int rlen = http_post("/proto-ver", (const uint8_t *)"---", 3, false,
@@ -367,7 +367,7 @@ ZTEST(protocomm_http, test_01_proto_ver)
 		     "no session cookie issued");
 }
 
-ZTEST(protocomm_http, test_02_sec1_session_per_request_connections)
+ZTEST(protocomm_http, test_sec1_session_per_request_connections)
 {
 	/* iOS-style client: every request on a fresh TCP connection, the
 	 * session carried purely by the cookie.
@@ -383,7 +383,7 @@ ZTEST(protocomm_http, test_02_sec1_session_per_request_connections)
 	prov_client_destroy(&c);
 }
 
-ZTEST(protocomm_http, test_03_cookie_reset_semantics)
+ZTEST(protocomm_http, test_cookie_reset_semantics)
 {
 	/* Establish a session, then send a request WITHOUT the cookie: the
 	 * transport must reset the protocomm session (fresh cookie, old
@@ -422,7 +422,7 @@ ZTEST(protocomm_http, test_03_cookie_reset_semantics)
 	prov_client_destroy(&c2);
 }
 
-ZTEST(protocomm_http, test_04_keepalive_like_esp_prov)
+ZTEST(protocomm_http, test_keepalive_like_esp_prov)
 {
 	/* esp_prov drives every request through one persistent connection;
 	 * replicate that: proto-ver, the sec1 handshake and encrypted data
@@ -451,7 +451,7 @@ ZTEST(protocomm_http, test_04_keepalive_like_esp_prov)
 	zsock_close(sock);
 }
 
-ZTEST(protocomm_http, test_05_concurrent_connections)
+ZTEST(protocomm_http, test_concurrent_connections)
 {
 	/* The Android app's HttpURLConnection opens a fresh connection for the
 	 * next status poll while a previous keep-alive one still lingers, so
