@@ -1,0 +1,104 @@
+name: Smoke (multi-board build)
+
+# Pre-release build smoke test: compile the samples across a representative
+# spread of Wi-Fi-capable vendor stacks (Espressif / ST / NXP / Infineon /
+# Silabs; Xtensa / RISC-V / ARM). Runs on demand and when a v* release tag is
+# pushed — NOT on every push/PR (that's build.yml).
+#
+# Informational by design: individual board build failures are recorded in each
+# job's summary but do not fail the workflow, so a too-small SoC or an immature
+# upstream driver never blocks a release. Review the summaries, then trim.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Build ${{ matrix.sample }} (${{ matrix.board }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per board+sample; each carries its own toolchain and (where
+        # the vendor Wi-Fi/BLE firmware ships as a blob) its HAL blob module.
+        # disco_l475_iot1 builds SoftAP only — its Wi-Fi (Inventek ES-WIFI) is
+        # solid but the on-board BlueNRG BLE is not wired up for the BLE sample.
+        include:
+          - { board: "esp32s3_devkitc/esp32s3/procpu", sample: wifi_prov_ble,    toolchain: xtensa-espressif_esp32s3_zephyr-elf, blobs: hal_espressif }
+          - { board: "esp32s3_devkitc/esp32s3/procpu", sample: wifi_prov_softap, toolchain: xtensa-espressif_esp32s3_zephyr-elf, blobs: hal_espressif }
+          - { board: "esp32c3_devkitc",                sample: wifi_prov_ble,    toolchain: riscv64-zephyr-elf,                  blobs: hal_espressif }
+          - { board: "esp32c3_devkitc",                sample: wifi_prov_softap, toolchain: riscv64-zephyr-elf,                  blobs: hal_espressif }
+          - { board: "esp32c6_devkitc",                sample: wifi_prov_ble,    toolchain: riscv64-zephyr-elf,                  blobs: hal_espressif }
+          - { board: "esp32c6_devkitc",                sample: wifi_prov_softap, toolchain: riscv64-zephyr-elf,                  blobs: hal_espressif }
+          - { board: "disco_l475_iot1",                sample: wifi_prov_softap, toolchain: arm-zephyr-eabi,                     blobs: "" }
+          - { board: "frdm_rw612",                     sample: wifi_prov_ble,    toolchain: arm-zephyr-eabi,                     blobs: hal_nxp }
+          - { board: "frdm_rw612",                     sample: wifi_prov_softap, toolchain: arm-zephyr-eabi,                     blobs: hal_nxp }
+          - { board: "cy8cproto_062_4343w",            sample: wifi_prov_ble,    toolchain: arm-zephyr-eabi,                     blobs: hal_infineon }
+          - { board: "cy8cproto_062_4343w",            sample: wifi_prov_softap, toolchain: arm-zephyr-eabi,                     blobs: hal_infineon }
+          - { board: "siwx917_rb4342a",                sample: wifi_prov_ble,    toolchain: arm-zephyr-eabi,                     blobs: hal_silabs }
+          - { board: "siwx917_rb4342a",                sample: wifi_prov_softap, toolchain: arm-zephyr-eabi,                     blobs: hal_silabs }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          toolchains: ${{ matrix.toolchain }}
+
+      - name: Install nanopb generator dependencies
+        # nanopb's zephyr_nanopb_sources() runs protoc via grpcio-tools.
+        run: pip install grpcio-tools==1.68.0
+
+      - name: Fetch vendor binary blobs (Wi-Fi/BLE firmware)
+        if: matrix.blobs != ''
+        # The blob hosts occasionally return transient 5xx errors; retry. Kept
+        # non-fatal so a blob hiccup is visible as a build failure in the
+        # summary rather than aborting the whole job before the build runs.
+        continue-on-error: true
+        run: |
+          n=0
+          until west blobs fetch ${{ matrix.blobs }}; do
+            n=$((n + 1))
+            if [ "$n" -ge 5 ]; then
+              echo "blob fetch for ${{ matrix.blobs }} still failing after $n attempts"; exit 1
+            fi
+            echo "transient blob fetch error; retry $n after backoff"
+            sleep $((n * 10))
+          done
+
+      - name: Build sample
+        id: build
+        # Informational: a board that overflows flash or lacks a v4.4.1 driver
+        # must not fail the workflow. The real result is captured below.
+        continue-on-error: true
+        run: |
+          west build -b ${{ matrix.board }} \
+            network-provisioning-zephyr/samples/${{ matrix.sample }}
+
+      - name: Record result in the job summary
+        if: always()
+        run: |
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
+            icon="✅"
+          else
+            icon="❌"
+          fi
+          echo "## $icon \`${{ matrix.board }}\` — ${{ matrix.sample }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build outcome: **${{ steps.build.outcome }}** (toolchain \`${{ matrix.toolchain }}\`, blobs \`${{ matrix.blobs || 'none' }}\`)." >> "$GITHUB_STEP_SUMMARY"

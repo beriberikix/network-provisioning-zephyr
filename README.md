@@ -281,6 +281,14 @@ end-to-end test, the esp_prov SoftAP end-to-end test, and `esp32s3_devkitc` and
 [`west.yml`](west.yml) on every push and pull request; moving to a newer stable
 release is a one-line bump of that pin.
 
+A separate **multi-board build smoke test**
+([`.github/workflows/smoke.yml`](.github/workflows/smoke.yml)) compiles the
+samples across a representative spread of Wi-Fi-capable vendor stacks (Espressif,
+ST, NXP, Infineon, Silicon Labs; Xtensa/RISC-V/ARM). It runs on demand
+(`workflow_dispatch`) and when a `v*` release tag is pushed, and is
+informational — per-board results land in the run summary without blocking a
+release.
+
 ## Using it as a module in an existing workspace
 
 Add this repo to your `west.yml` and enable `CONFIG_NETWORK_PROV_MGR=y` plus
