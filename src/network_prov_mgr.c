@@ -41,7 +41,7 @@ LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL); /* registered i
 static struct {
 	bool inited;
 	bool started;
-	enum network_prov_scheme scheme;
+	const struct network_prov_scheme *scheme;
 	struct network_prov_event_handler app;
 	uint32_t wifi_conn_attempts;
 	struct protocomm *pc;
@@ -93,20 +93,10 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 	if (mgr.inited) {
 		return -EALREADY;
 	}
-	if (config.scheme != NETWORK_PROV_SCHEME_BLE &&
-	    config.scheme != NETWORK_PROV_SCHEME_SOFTAP &&
-	    config.scheme != NETWORK_PROV_SCHEME_CONSOLE) {
-		LOG_ERR("Unknown provisioning scheme %d", config.scheme);
+	if (config.scheme == NULL || config.scheme->start == NULL ||
+	    config.scheme->stop == NULL) {
+		LOG_ERR("No (or invalid) provisioning scheme provided");
 		return -EINVAL;
-	}
-	if ((config.scheme == NETWORK_PROV_SCHEME_BLE &&
-	     !IS_ENABLED(CONFIG_NETWORK_PROV_BLE)) ||
-	    (config.scheme == NETWORK_PROV_SCHEME_SOFTAP &&
-	     !IS_ENABLED(CONFIG_NETWORK_PROV_SOFTAP)) ||
-	    (config.scheme == NETWORK_PROV_SCHEME_CONSOLE &&
-	     !IS_ENABLED(CONFIG_NETWORK_PROV_CONSOLE))) {
-		LOG_ERR("Transport for scheme %d not enabled", config.scheme);
-		return -ENOTSUP;
 	}
 
 	mgr.scheme = config.scheme;
@@ -441,32 +431,7 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 		}
 	}
 
-	switch (mgr.scheme) {
-#if defined(CONFIG_NETWORK_PROV_BLE)
-	case NETWORK_PROV_SCHEME_BLE:
-		ARG_UNUSED(service_key);
-		ret = network_prov_ble_start(mgr.pc, service_name);
-		break;
-#endif
-#if defined(CONFIG_NETWORK_PROV_SOFTAP)
-	case NETWORK_PROV_SCHEME_SOFTAP:
-		ret = network_prov_softap_start(mgr.pc, service_name, service_key);
-		break;
-#endif
-#if defined(CONFIG_NETWORK_PROV_CONSOLE)
-	case NETWORK_PROV_SCHEME_CONSOLE:
-		/* Console uses neither; mark unused so a console-only build (the
-		 * other cases compiled out) raises no -Wunused-parameter.
-		 */
-		ARG_UNUSED(service_name);
-		ARG_UNUSED(service_key);
-		ret = network_prov_console_start(mgr.pc);
-		break;
-#endif
-	default:
-		ret = -ENOTSUP;
-		break;
-	}
+	ret = mgr.scheme->start(mgr.pc, service_name, service_key);
 	if (ret) {
 		goto err;
 	}
@@ -489,21 +454,7 @@ static void do_teardown(void)
 	if (!mgr.started) {
 		return;
 	}
-#if defined(CONFIG_NETWORK_PROV_BLE)
-	if (mgr.scheme == NETWORK_PROV_SCHEME_BLE) {
-		network_prov_ble_stop();
-	}
-#endif
-#if defined(CONFIG_NETWORK_PROV_SOFTAP)
-	if (mgr.scheme == NETWORK_PROV_SCHEME_SOFTAP) {
-		network_prov_softap_stop();
-	}
-#endif
-#if defined(CONFIG_NETWORK_PROV_CONSOLE)
-	if (mgr.scheme == NETWORK_PROV_SCHEME_CONSOLE) {
-		network_prov_console_stop();
-	}
-#endif
+	mgr.scheme->stop();
 	network_prov_wifi_scan_deinit();
 	network_prov_wifi_config_deinit();
 	protocomm_delete(mgr.pc);

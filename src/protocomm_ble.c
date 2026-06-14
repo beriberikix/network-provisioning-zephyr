@@ -23,6 +23,7 @@
 
 #include "protocomm.h"
 #include "network_prov_internal.h"
+#include "network_provisioning/scheme_ble.h"
 
 LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 
@@ -343,3 +344,18 @@ void network_prov_ble_stop(void)
 	}
 	g_pc = NULL;
 }
+
+/* Scheme vtable: BLE uses service_name as the device name and ignores the
+ * service_key (no AP password).
+ */
+static int ble_scheme_start(struct protocomm *pc, const char *service_name,
+			    const char *service_key)
+{
+	ARG_UNUSED(service_key);
+	return network_prov_ble_start(pc, service_name);
+}
+
+const struct network_prov_scheme network_prov_scheme_ble = {
+	.start = ble_scheme_start,
+	.stop = network_prov_ble_stop,
+};
