@@ -27,8 +27,9 @@ LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL); /* registered i
  * dependency (the transports depend on NETWORK_PROV_CORE, which the manager
  * selects), so enforce it here.
  */
-#if !defined(CONFIG_NETWORK_PROV_BLE) && !defined(CONFIG_NETWORK_PROV_SOFTAP)
-#error "NETWORK_PROV_MGR needs at least one transport: enable CONFIG_NETWORK_PROV_BLE and/or CONFIG_NETWORK_PROV_SOFTAP"
+#if !defined(CONFIG_NETWORK_PROV_BLE) && !defined(CONFIG_NETWORK_PROV_SOFTAP) && \
+	!defined(CONFIG_NETWORK_PROV_CONSOLE)
+#error "NETWORK_PROV_MGR needs at least one transport: enable CONFIG_NETWORK_PROV_BLE, CONFIG_NETWORK_PROV_SOFTAP and/or CONFIG_NETWORK_PROV_CONSOLE"
 #endif
 
 #define EP_VERSION  "proto-ver"
@@ -93,14 +94,17 @@ int network_prov_mgr_init(struct network_prov_mgr_config config)
 		return -EALREADY;
 	}
 	if (config.scheme != NETWORK_PROV_SCHEME_BLE &&
-	    config.scheme != NETWORK_PROV_SCHEME_SOFTAP) {
+	    config.scheme != NETWORK_PROV_SCHEME_SOFTAP &&
+	    config.scheme != NETWORK_PROV_SCHEME_CONSOLE) {
 		LOG_ERR("Unknown provisioning scheme %d", config.scheme);
 		return -EINVAL;
 	}
 	if ((config.scheme == NETWORK_PROV_SCHEME_BLE &&
 	     !IS_ENABLED(CONFIG_NETWORK_PROV_BLE)) ||
 	    (config.scheme == NETWORK_PROV_SCHEME_SOFTAP &&
-	     !IS_ENABLED(CONFIG_NETWORK_PROV_SOFTAP))) {
+	     !IS_ENABLED(CONFIG_NETWORK_PROV_SOFTAP)) ||
+	    (config.scheme == NETWORK_PROV_SCHEME_CONSOLE &&
+	     !IS_ENABLED(CONFIG_NETWORK_PROV_CONSOLE))) {
 		LOG_ERR("Transport for scheme %d not enabled", config.scheme);
 		return -ENOTSUP;
 	}
@@ -449,6 +453,12 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 		ret = network_prov_softap_start(mgr.pc, service_name, service_key);
 		break;
 #endif
+#if defined(CONFIG_NETWORK_PROV_CONSOLE)
+	case NETWORK_PROV_SCHEME_CONSOLE:
+		ARG_UNUSED(service_key);
+		ret = network_prov_console_start(mgr.pc);
+		break;
+#endif
 	default:
 		ret = -ENOTSUP;
 		break;
@@ -483,6 +493,11 @@ static void do_teardown(void)
 #if defined(CONFIG_NETWORK_PROV_SOFTAP)
 	if (mgr.scheme == NETWORK_PROV_SCHEME_SOFTAP) {
 		network_prov_softap_stop();
+	}
+#endif
+#if defined(CONFIG_NETWORK_PROV_CONSOLE)
+	if (mgr.scheme == NETWORK_PROV_SCHEME_CONSOLE) {
+		network_prov_console_stop();
 	}
 #endif
 	network_prov_wifi_scan_deinit();

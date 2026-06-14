@@ -38,6 +38,17 @@ config NETWORK_PROV_SOFTAP
 	  AP+STA mode and a DHCPv4 server; see the wifi_prov_softap sample's
 	  prj.conf.
 
+config NETWORK_PROV_CONSOLE
+	bool "Console transport (protocomm over the shell)"
+	depends on NETWORK_PROV_CORE
+	depends on SHELL
+	help
+	  Carry the provisioning protocol over the device console via a
+	  "net_prov <endpoint> <session_id> <hex>" shell command — the transport
+	  esp_prov speaks with "--transport console". Useful for bring-up and
+	  debugging without BLE or a Wi-Fi access point; the operator bridges the
+	  hex request/response lines between esp_prov and the device by hand.
+
 menuconfig NETWORK_PROV_MGR
 	bool "Network provisioning manager (Wi-Fi provisioning)"
 	# Depend on (rather than select) heavy subsystems: selecting symbols that

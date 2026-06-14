@@ -57,6 +57,10 @@ void network_prov_softap_stop(void);
 int network_prov_softap_http_start(struct protocomm *pc);
 void network_prov_softap_http_stop(void);
 
+/* Console transport (protocomm over the device shell). */
+int network_prov_console_start(struct protocomm *pc);
+void network_prov_console_stop(void);
+
 #ifdef __cplusplus
 }
 #endif
