@@ -411,6 +411,7 @@ static void verify_custom_endpoint(struct prov_client *c)
 	char expect[64];
 	int n = snprintf(expect, sizeof(expect), "echo:%s", PROV_TEST_CUSTOM_MSG);
 
+	TEST_ASSERT(n > 0 && n < (int)sizeof(expect), "expect string truncated");
 	TEST_ASSERT(secure_exchange(c, PROV_TEST_CUSTOM_EP,
 				    (const uint8_t *)PROV_TEST_CUSTOM_MSG,
 				    strlen(PROV_TEST_CUSTOM_MSG), resp, sizeof(resp),

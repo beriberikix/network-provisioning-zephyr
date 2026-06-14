@@ -325,8 +325,12 @@ int network_prov_mgr_endpoint_register(const char *ep_name,
 	if (e == NULL) {
 		return -ENOENT;
 	}
-	e->handler = handler;
+	/* Publish ctx before handler: the trampoline reads handler first, so a
+	 * request racing registration must not see a handler with a stale ctx.
+	 */
 	e->ctx = user_ctx;
+	compiler_barrier();
+	e->handler = handler;
 	return 0;
 }
 

@@ -154,24 +154,27 @@ static void ensure_session(void)
 }
 
 /* Recover the endpoint name from the request path for the fallback resource:
- * skip the leading '/' and stop at the query string. Bounded to an endpoint
- * name; returns "" if it doesn't fit (yields an unknown-endpoint error).
+ * skip the leading '/' and stop at the query string, into @p out. If the name
+ * does not fit @p cap, @p out is set to "" so it resolves to an unknown
+ * endpoint rather than being silently truncated onto a valid one.
  */
-static const char *ep_name_from_url(struct http_client_ctx *client)
+static void ep_name_from_url(struct http_client_ctx *client, char *out, size_t cap)
 {
-	static char name[PROTOCOMM_EP_NAME_MAX];
 	const char *p = client->url_buffer;
 	size_t i = 0;
 
 	if (*p == '/') {
 		p++;
 	}
-	while (p[i] != '\0' && p[i] != '?' && i < sizeof(name) - 1) {
-		name[i] = p[i];
+	while (p[i] != '\0' && p[i] != '?') {
+		if (i >= cap - 1) {
+			out[0] = '\0'; /* too long to be a known endpoint */
+			return;
+		}
+		out[i] = p[i];
 		i++;
 	}
-	name[i] = '\0';
-	return name;
+	out[i] = '\0';
 }
 
 static int prov_http_handler(struct http_client_ctx *client,
@@ -182,9 +185,18 @@ static int prov_http_handler(struct http_client_ctx *client,
 {
 	/* Built-in resources pass the endpoint name in user_data; the fallback
 	 * resource (custom endpoints) passes NULL, so route by the request path.
+	 * The fallback name lives on the stack for this callback (no sharing
+	 * with a concurrent client's request).
 	 */
-	const char *ep_name = (user_data != NULL) ? (const char *)user_data
-						  : ep_name_from_url(client);
+	char fallback_name[PROTOCOMM_EP_NAME_MAX];
+	const char *ep_name;
+
+	if (user_data != NULL) {
+		ep_name = (const char *)user_data;
+	} else {
+		ep_name_from_url(client, fallback_name, sizeof(fallback_name));
+		ep_name = fallback_name;
+	}
 
 	if (status == HTTP_SERVER_TRANSACTION_ABORTED ||
 	    status == HTTP_SERVER_TRANSACTION_COMPLETE) {

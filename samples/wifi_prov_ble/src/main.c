@@ -45,6 +45,12 @@ static int app_custom_handler(void *ctx, const uint8_t *inbuf, size_t inlen,
 			      uint8_t **outbuf, size_t *outlen)
 {
 	ARG_UNUSED(ctx);
+	if (inlen == 0) {
+		*outbuf = NULL;
+		*outlen = 0;
+		return 0;
+	}
+
 	uint8_t *out = k_malloc(inlen);
 
 	if (out == NULL) {
