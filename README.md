@@ -1,6 +1,7 @@
 # network-provisioning-zephyr
 
 [![CI](https://github.com/beriberikix/network-provisioning-zephyr/actions/workflows/build.yml/badge.svg)](https://github.com/beriberikix/network-provisioning-zephyr/actions/workflows/build.yml)
+[![API docs](https://img.shields.io/badge/docs-Doxygen-blue?logo=readthedocs&logoColor=white)](https://beriberikix.github.io/network-provisioning-zephyr/)
 
 A Zephyr RTOS port of Espressif's
 [network provisioning](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/provisioning.html)
