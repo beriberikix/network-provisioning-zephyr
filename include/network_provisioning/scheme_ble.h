@@ -15,9 +15,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "network_provisioning/network_prov_mgr.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * BLE (GATT) transport scheme object. Pass &network_prov_scheme_ble as the
+ * @c scheme of @ref network_prov_mgr_config. Requires CONFIG_NETWORK_PROV_BLE
+ * (otherwise referencing it is a link error).
+ */
+extern const struct network_prov_scheme network_prov_scheme_ble;
 
 /**
  * Override the 128-bit GATT service UUID the device advertises and serves.

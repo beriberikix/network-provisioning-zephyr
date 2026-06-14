@@ -34,6 +34,7 @@
 
 #include "protocomm.h"
 #include "network_prov_internal.h"
+#include "network_provisioning/scheme_softap.h"
 
 LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 
@@ -469,3 +470,11 @@ void network_prov_softap_stop(void)
 	softap_ap_stop();
 #endif
 }
+
+/* Scheme vtable: the start signature already matches (service_name = SSID,
+ * service_key = AP password).
+ */
+const struct network_prov_scheme network_prov_scheme_softap = {
+	.start = network_prov_softap_start,
+	.stop = network_prov_softap_stop,
+};

@@ -24,6 +24,7 @@
 #include <zephyr/net/wifi.h>
 
 #include "network_provisioning/network_prov_mgr.h"
+#include "network_provisioning/scheme_softap.h"
 #include "network_provisioning/test/fake_wifi.h"
 
 LOG_MODULE_REGISTER(esp_prov_dut, LOG_LEVEL_INF);
@@ -120,7 +121,7 @@ int main(void)
 	program_fake_wifi();
 
 	struct network_prov_mgr_config cfg = {
-		.scheme = NETWORK_PROV_SCHEME_SOFTAP,
+		.scheme = &network_prov_scheme_softap,
 		.wifi_conn_attempts = 0, /* single attempt: report failures at once */
 	};
 

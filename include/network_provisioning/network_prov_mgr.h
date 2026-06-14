@@ -62,25 +62,31 @@ struct network_prov_event_handler {
 	void *user_data;
 };
 
-/** Provisioning scheme (transport). */
-enum network_prov_scheme {
-	/** BLE GATT (requires CONFIG_NETWORK_PROV_BLE). */
-	NETWORK_PROV_SCHEME_BLE = 0,
-	/** HTTP on a device-hosted access point at 192.168.4.1
-	 *  (requires CONFIG_NETWORK_PROV_SOFTAP).
+struct protocomm; /* forward declaration — the scheme vtable only needs a pointer */
+
+/**
+ * Provisioning transport (scheme) vtable. Each transport exposes one object —
+ * @ref network_prov_scheme_ble, @ref network_prov_scheme_softap or
+ * @ref network_prov_scheme_console (in the matching scheme_*.h header) — that
+ * the manager calls without any per-transport knowledge, mirroring ESP-IDF's
+ * network_prov_scheme_t.
+ */
+struct network_prov_scheme {
+	/**
+	 * Start the transport for protocomm instance @p pc. @p service_name and
+	 * @p service_key carry the BLE device name / SoftAP SSID + password; a
+	 * transport ignores whichever it does not use. Returns 0 or -errno.
 	 */
-	NETWORK_PROV_SCHEME_SOFTAP = 1,
-	/** Device console (protocomm over a `net_prov` shell command), for
-	 *  bring-up/debug — what `esp_prov --transport console` speaks
-	 *  (requires CONFIG_NETWORK_PROV_CONSOLE).
-	 */
-	NETWORK_PROV_SCHEME_CONSOLE = 2,
+	int (*start)(struct protocomm *pc, const char *service_name,
+		     const char *service_key);
+	/** Tear the transport down. */
+	void (*stop)(void);
 };
 
 /** Manager configuration passed to @ref network_prov_mgr_init. */
 struct network_prov_mgr_config {
-	/** Transport scheme. */
-	enum network_prov_scheme scheme;
+	/** Transport scheme object, e.g. &network_prov_scheme_ble. */
+	const struct network_prov_scheme *scheme;
 	/** Application event handler (may have a NULL callback). */
 	struct network_prov_event_handler app_event_handler;
 	/**

@@ -30,6 +30,7 @@
 
 #include "protocomm.h"
 #include "network_prov_internal.h"
+#include "network_provisioning/scheme_console.h"
 
 LOG_MODULE_DECLARE(network_prov, CONFIG_NETWORK_PROV_LOG_LEVEL);
 
@@ -54,6 +55,20 @@ void network_prov_console_stop(void)
 	g_pc = NULL;
 	have_session = false;
 }
+
+/* Scheme vtable: the console takes neither a service name nor a key. */
+static int console_scheme_start(struct protocomm *pc, const char *service_name,
+				const char *service_key)
+{
+	ARG_UNUSED(service_name);
+	ARG_UNUSED(service_key);
+	return network_prov_console_start(pc);
+}
+
+const struct network_prov_scheme network_prov_scheme_console = {
+	.start = console_scheme_start,
+	.stop = network_prov_console_stop,
+};
 
 static int cmd_net_prov(const struct shell *sh, size_t argc, char **argv)
 {

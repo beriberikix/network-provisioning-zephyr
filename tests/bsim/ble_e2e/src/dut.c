@@ -89,7 +89,7 @@ static void dut_run(enum wifi_conn_status connect_outcome,
 		    enum network_prov_cb_event want)
 {
 	struct network_prov_mgr_config cfg = {
-		.scheme = NETWORK_PROV_SCHEME_BLE,
+		.scheme = &network_prov_scheme_ble,
 		.app_event_handler = { .event_cb = prov_event },
 		.wifi_conn_attempts = 0, /* single attempt: failures reported at once */
 	};
