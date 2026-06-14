@@ -455,6 +455,10 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 #endif
 #if defined(CONFIG_NETWORK_PROV_CONSOLE)
 	case NETWORK_PROV_SCHEME_CONSOLE:
+		/* Console uses neither; mark unused so a console-only build (the
+		 * other cases compiled out) raises no -Wunused-parameter.
+		 */
+		ARG_UNUSED(service_name);
 		ARG_UNUSED(service_key);
 		ret = network_prov_console_start(mgr.pc);
 		break;

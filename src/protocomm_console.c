@@ -66,9 +66,16 @@ static int cmd_net_prov(const struct shell *sh, size_t argc, char **argv)
 
 	const char *ep = argv[1];
 	char *endp;
+
+	errno = 0;
 	unsigned long parsed = strtoul(argv[2], &endp, 10);
 
-	if (argv[2][0] == '\0' || *endp != '\0') {
+	/* Require the whole token to be a number and reject out-of-range values,
+	 * so distinct inputs can't alias the same session (matches the SoftAP
+	 * cookie parsing).
+	 */
+	if (argv[2][0] == '\0' || *endp != '\0' || errno == ERANGE ||
+	    parsed > UINT32_MAX) {
 		shell_error(sh, "net_prov: bad session_id '%s'", argv[2]);
 		return -EINVAL;
 	}
