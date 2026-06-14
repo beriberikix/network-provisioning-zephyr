@@ -190,4 +190,31 @@ ZTEST(protocomm, test_sec0_session_and_echo)
 	protocomm_delete(pc);
 }
 
+ZTEST(protocomm, test_malformed_session_request_rejected)
+{
+	struct protocomm *pc = protocomm_new();
+
+	zassert_not_null(pc);
+	zassert_equal(protocomm_set_security(pc, "prov-session",
+					     &network_prov_security0, NULL), 0);
+	protocomm_open_session(pc);
+
+	/* Bytes that are not a valid SessionData protobuf: the handshake must
+	 * fail cleanly (decode error) rather than crash or establish a session.
+	 */
+	static const uint8_t junk[] = {0xff, 0xff, 0xff, 0xff, 0x7f, 0x42, 0x13};
+	uint8_t *out = NULL;
+	size_t outlen = 0;
+
+	zassert_not_equal(protocomm_req_handle(pc, "prov-session", junk, sizeof(junk),
+					       &out, &outlen), 0,
+			  "malformed handshake must be rejected");
+	if (out != NULL) {
+		k_free(out);
+	}
+
+	protocomm_close_session(pc);
+	protocomm_delete(pc);
+}
+
 ZTEST_SUITE(protocomm, NULL, NULL, NULL, NULL, NULL);

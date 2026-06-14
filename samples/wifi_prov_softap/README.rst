@@ -83,3 +83,19 @@ Defaults live in ``src/main.c`` and ``prj.conf``:
   the extra client then gets an empty response, which the app feeds straight
   into its AES cipher and reports as **"Null input buffer"**. Must be at least
   ``2 + MAX_CLIENTS``.
+
+Sample output
+*************
+
+.. code-block:: console
+
+   [00:00:00.110] <inf> app: Device not provisioned, starting SoftAP provisioning
+   [00:00:00.260] <inf> network_prov: SoftAP 'PROV_ZEPHYR' up (WPA2-PSK), provisioning at http://192.168.4.1
+   [00:00:00.261] <inf> app: Provisioning started; join the AP and open the ESP SoftAP Provisioning app
+   [00:00:00.261] <inf> app:   AP SSID     : PROV_ZEPHYR
+   [00:00:00.262] <inf> app:   proof-of-pos: abcd1234
+   [00:01:12.480] <inf> network_prov: Scan done: 12 AP(s)
+   [00:01:20.905] <inf> network_prov: Received credentials for SSID '<your-ssid>'
+   [00:01:21.106] <inf> app: Wi-Fi credentials received, connecting...
+   [00:01:26.530] <inf> network_prov: Wi-Fi connected
+   [00:01:26.533] <inf> app: Provisioning successful, Wi-Fi connected

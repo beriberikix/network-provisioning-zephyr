@@ -1,5 +1,7 @@
 tests:
   network_provisioning.manager_api:
+    modules:
+      - nanopb
     tags:
       - network_provisioning
       - wifi

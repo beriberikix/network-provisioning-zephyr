@@ -153,7 +153,7 @@ static void suite_teardown(void *fixture)
 	network_prov_mgr_deinit();
 }
 
-ZTEST(console, test_01_proto_ver)
+ZTEST(console, test_proto_ver)
 {
 	struct console_ctx cc = { .sh = shell_backend_dummy_get_ptr(), .sid = 0 };
 	uint8_t req = 0; /* proto-ver ignores its request body */
@@ -176,7 +176,7 @@ ZTEST(console, test_01_proto_ver)
 	zassert_not_null(strstr(json, "wifi_prov"), "proto-ver JSON missing caps");
 }
 
-ZTEST(console, test_02_handshake_then_get_wifi_status)
+ZTEST(console, test_handshake_then_get_wifi_status)
 {
 	struct console_ctx cc = { .sh = shell_backend_dummy_get_ptr(), .sid = 0 };
 	struct prov_client c;
@@ -233,7 +233,7 @@ ZTEST(console, test_02_handshake_then_get_wifi_status)
 	prov_client_destroy(&c);
 }
 
-ZTEST(console, test_03_session_reset_on_new_session_id)
+ZTEST(console, test_session_reset_on_new_session_id)
 {
 	struct console_ctx cc = { .sh = shell_backend_dummy_get_ptr(), .sid = 1 };
 	struct prov_client c;

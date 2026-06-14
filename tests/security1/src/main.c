@@ -170,4 +170,38 @@ ZTEST(security1, test_session_reset_allows_rehandshake)
 	protocomm_delete(pc);
 }
 
+ZTEST(security1, test_malformed_handshake_rejected)
+{
+	struct protocomm *pc = make_pc(POP);
+	uint8_t *out = NULL;
+	size_t outlen = 0;
+
+	/* Garbage in place of a Command0 / SessionData protobuf: the handshake
+	 * must fail (decode error) and leave the session unestablished.
+	 */
+	static const uint8_t junk[] = {0xff, 0xff, 0xff, 0xff, 0x7f, 0x42, 0x13};
+
+	zassert_not_equal(protocomm_req_handle(pc, "prov-session", junk, sizeof(junk),
+					       &out, &outlen), 0,
+			  "malformed sec1 handshake must be rejected");
+	if (out != NULL) {
+		k_free(out);
+		out = NULL;
+	}
+
+	/* And no encrypted data may flow on the unestablished session. */
+	uint8_t enc[8] = {0};
+
+	outlen = 0;
+	zassert_not_equal(protocomm_req_handle(pc, DATA_EP, enc, sizeof(enc),
+					       &out, &outlen), 0,
+			  "data must be rejected without a completed handshake");
+	if (out != NULL) {
+		k_free(out);
+	}
+
+	protocomm_close_session(pc);
+	protocomm_delete(pc);
+}
+
 ZTEST_SUITE(security1, NULL, NULL, NULL, NULL, NULL);

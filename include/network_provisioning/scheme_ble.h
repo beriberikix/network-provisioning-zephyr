@@ -38,6 +38,16 @@ extern const struct network_prov_scheme network_prov_scheme_ble;
  * @param uuid128 16-byte UUID, little-endian (as produced by
  *                BT_UUID_128_ENCODE).
  * @return 0 on success, -EINVAL if @p uuid128 is NULL.
+ *
+ * @code
+ * static const uint8_t uuid[16] = BT_UUID_128_ENCODE(
+ *         0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef0);
+ *
+ * network_prov_mgr_init(config);
+ * network_prov_scheme_ble_set_service_uuid(uuid);     // before start
+ * network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, "abcd1234",
+ *                                     "PROV_1234", NULL);
+ * @endcode
  */
 int network_prov_scheme_ble_set_service_uuid(const uint8_t uuid128[16]);
 

@@ -20,6 +20,15 @@ extern "C" {
  * Console (shell) transport scheme object. Pass &network_prov_scheme_console as
  * the @c scheme of @ref network_prov_mgr_config. Requires
  * CONFIG_NETWORK_PROV_CONSOLE (otherwise referencing it is a link error).
+ *
+ * @note The protocol is carried by a single shell command,
+ *       @c "net_prov <endpoint> <session_id> <hex-request>", which dispatches the
+ *       hex-decoded request to the named protocomm endpoint and prints the
+ *       response as lowercase hex. Changing @c session_id opens a fresh
+ *       protocomm session (resetting the security handshake), mirroring a BLE
+ *       reconnect or a new HTTP cookie. The @c service_name / @c service_key
+ *       passed to @ref network_prov_mgr_start_provisioning are unused for this
+ *       scheme. This is the transport @c "esp_prov --transport console" speaks.
  */
 extern const struct network_prov_scheme network_prov_scheme_console;
 

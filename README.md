@@ -40,6 +40,44 @@ management API.
 | `wifi_prov_mgr_*` API             | `network_prov_mgr_*` API (`network_provisioning/...`)      |
 | `network_prov_scheme_*` objects   | `network_prov_scheme_ble/softap/console` (`scheme_*.h`)    |
 
+## Architecture
+
+The manager is transport-agnostic: it drives a `struct network_prov_scheme`
+vtable (`start`/`stop`) and never knows which transport is underneath. The
+transport feeds bytes to the protocomm core, which dispatches to endpoint
+handlers after the security layer has decrypted the request.
+
+```
+                    application
+                        │  network_prov_mgr_* (include/network_provisioning/network_prov_mgr.h)
+                        ▼
+              ┌───────────────────────┐   lifecycle events
+              │  manager / state machine │ ─────────────────► app event callback
+              │  (network_prov_mgr.c)    │
+              └───────────┬───────────────┘
+                          │  struct network_prov_scheme vtable (start / stop)
+              ┌───────────▼───────────────────────────────────┐
+              │  transport scheme                               │
+              │   BLE (GATT)  │  SoftAP (HTTP)  │  console (shell)│
+              └───────────┬───────────────────────────────────┘
+                          │  protocomm endpoints (proto-ver, prov-session, prov-config, …)
+              ┌───────────▼───────────┐
+              │  protocomm core         │ ── security 0 / 1 (handshake + encrypt/decrypt)
+              │  (endpoint dispatch)    │
+              └───────────┬───────────┘
+                          │  endpoint handlers
+              ┌───────────▼───────────────────────────┐
+              │  Wi-Fi handlers: config / scan / ctrl   │
+              └───────────┬───────────────────────────┘
+                          │  net_mgmt  +  wifi_credentials
+                          ▼
+                Zephyr Wi-Fi  (or the fake_wifi backend under test)
+```
+
+Adding a transport means implementing one `network_prov_scheme` object; adding a
+device-specific feature means registering a [custom endpoint](#public-api). The
+protocol core and Wi-Fi handlers stay untouched in both cases.
+
 ## Protocol surface
 
 Over BLE, each protocomm endpoint is exposed as one GATT characteristic; the
@@ -68,7 +106,9 @@ status only once.
 The `.proto` files under [`proto/`](proto/) are taken verbatim from ESP-IDF
 (protocomm) and the `network_provisioning` component, so field numbering — and
 therefore the wire format — is identical. `sec2.proto` and the Thread messages
-are trimmed for scope but Wi-Fi/sec0/sec1 field numbers are unchanged.
+are trimmed for scope but Wi-Fi/sec0/sec1 field numbers are unchanged. See
+[`proto/README.md`](proto/README.md) for the endpoint ↔ message map and the
+nanopb `.options` conventions.
 
 ## Repository layout
 
@@ -209,6 +249,9 @@ unit test for the simulated Wi-Fi backend run on `native_sim`:
 west twister -T network-provisioning-zephyr/tests -p native_sim --inline-logs
 ```
 
+See [`tests/README.md`](tests/README.md) for a per-suite breakdown and how to run
+each layer (native_sim, BabbleSim, esp_prov) individually.
+
 A **BabbleSim end-to-end test** (`tests/bsim/ble_e2e`) exercises the BLE
 transport and the whole manager headlessly: a Zephyr "tester" central drives a
 full provisioning flow (sec1 handshake, scan, config, status) over a simulated
@@ -253,6 +296,23 @@ set up in the samples' `prj.conf` files — copy the relevant lines from
 > security-1 session setup and handshake run PSA crypto on the Bluetooth host
 > RX thread via the GATT callbacks; Zephyr's default 1.2 kB RX stack silently
 > overflows there and wedges the BLE controller as soon as a central connects.
+
+## Troubleshooting
+
+Most field issues are subsystem sizing, not protocol bugs. The samples'
+`prj.conf` files carry the working values; the common symptoms:
+
+| Symptom | Cause / fix |
+| ------- | ----------- |
+| BLE controller wedges, or no response once the app connects (security 1) | `CONFIG_BT_RX_STACK_SIZE` too small. The sec1 handshake runs PSA crypto on the Bluetooth host RX thread; the default 1.2 kB stack overflows. Set **≥ 4096**. |
+| SoftAP app reports **"Null input buffer"** | `CONFIG_ZVFS_POLL_MAX` too small. The HTTP server polls `1 eventfd + 1 listener + MAX_CLIENTS` sockets at once; a too-small budget fails `zsock_poll()` with `ENOMEM` and the extra client gets an empty body. Set **≥ `2 + CONFIG_HTTP_SERVER_MAX_CLIENTS`**. |
+| SoftAP HTTP server never starts / silently restart-loops | `CONFIG_ZVFS_EVENTFD_MAX` too small. The DHCPv4 server and the HTTP server each need one eventfd. Set **≥ 2**. |
+| Wi-Fi RX allocations fail as soon as a station associates (SoftAP) | `CONFIG_HEAP_MEM_POOL_SIZE` too small for AP+STA concurrent mode (the esp32 driver allocates from the kernel heap). Give it real headroom. |
+| App reports failure even though Wi-Fi connected | The service was torn down before the app read the final status. Keep it up for the auto-stop grace window (`CONFIG_NETWORK_PROV_AUTOSTOP_TIMEOUT_MS`), or manage teardown via `network_prov_mgr_disable_auto_stop()`. |
+| Device boots straight to connected and never advertises | Expected once credentials are stored — it reconnects instead of provisioning. To force provisioning again, erase them with `network_prov_mgr_reset_wifi_provisioning()` (e.g. from a factory-reset button). |
+
+A failed connection **never** erases stored credentials automatically; only an
+explicit `network_prov_mgr_reset_wifi_provisioning()` does.
 
 ## License
 

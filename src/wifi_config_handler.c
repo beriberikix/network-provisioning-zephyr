@@ -297,6 +297,13 @@ uint32_t network_prov_wifi_config_remaining_attempts(void)
 	return wc.attempts_max - wc.attempts_completed;
 }
 
+/**
+ * Stage the credentials from a SetWifiConfig command (SSID, passphrase, optional
+ * BSSID/channel) into the working buffer after validating their lengths. The
+ * connection is not started here — do_apply_config() acts on the staged values.
+ *
+ * @return Status_Success, or Status_InvalidArgument on a bad length.
+ */
 static Status do_set_config(const CmdSetWifiConfig *cmd)
 {
 	if (cmd->ssid.size == 0 || cmd->ssid.size > SSID_MAX) {
@@ -324,6 +331,14 @@ static Status do_set_config(const CmdSetWifiConfig *cmd)
 	return Status_Success;
 }
 
+/**
+ * Persist the staged credentials to the wifi_credentials store and start the
+ * connection, arming the retry/timeout state machine. Results are reported
+ * asynchronously via the connect-result event and the manager's lifecycle
+ * events.
+ *
+ * @return Status_Success once the connect is under way, or a Status_* error.
+ */
 static Status do_apply_config(void)
 {
 	struct net_if *iface = net_if_get_wifi_sta();
