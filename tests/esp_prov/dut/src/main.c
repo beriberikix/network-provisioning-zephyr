@@ -15,6 +15,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <string.h>
+#include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
@@ -25,6 +27,27 @@
 #include "network_provisioning/test/fake_wifi.h"
 
 LOG_MODULE_REGISTER(esp_prov_dut, LOG_LEVEL_INF);
+
+/* Echo handler for the custom endpoint: returns "echo:" + request, exercising
+ * the SoftAP custom-endpoint route (esp_prov --custom_data).
+ */
+static int custom_echo(void *ctx, const uint8_t *inbuf, size_t inlen,
+		       uint8_t **outbuf, size_t *outlen)
+{
+	ARG_UNUSED(ctx);
+	static const char prefix[] = "echo:";
+	size_t plen = sizeof(prefix) - 1;
+	uint8_t *out = k_malloc(plen + inlen);
+
+	if (out == NULL) {
+		return -ENOMEM;
+	}
+	memcpy(out, prefix, plen);
+	memcpy(out + plen, inbuf, inlen);
+	*outbuf = out;
+	*outlen = plen + inlen;
+	return 0;
+}
 
 #define PROV_POP   "abcd1234"
 #define AP_NAME    "PROV_ZEPHYR"
@@ -109,11 +132,16 @@ int main(void)
 	 * success and several failures against one long-running instance).
 	 */
 	(void)network_prov_mgr_disable_auto_stop(0);
+	/* A custom application endpoint, reached over SoftAP via the fallback
+	 * route (esp_prov --custom_data); register the handler after start.
+	 */
+	(void)network_prov_mgr_endpoint_create("custom-data");
 	if (network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, PROV_POP,
 						AP_NAME, NULL) != 0) {
 		LOG_ERR("start_provisioning failed");
 		return 1;
 	}
+	(void)network_prov_mgr_endpoint_register("custom-data", custom_echo, NULL);
 
 	LOG_INF("esp_prov DUT ready: provisioning over HTTP at %s:80", DUT_IP);
 

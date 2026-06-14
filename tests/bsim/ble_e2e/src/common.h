@@ -36,4 +36,11 @@
 #define PROV_TEST_APP_VER   "9.9"
 #define PROV_TEST_APP_CAP   "feat_x"
 
+/* Custom application endpoint (network_prov_mgr_endpoint_create/register): the
+ * DUT echoes "echo:<msg>"; the tester verifies the round-trip over the secure
+ * session.
+ */
+#define PROV_TEST_CUSTOM_EP  "custom-data"
+#define PROV_TEST_CUSTOM_MSG "ping123"
+
 #endif /* NETWORK_PROV_BSIM_BLE_E2E_COMMON_H_ */

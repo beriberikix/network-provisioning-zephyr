@@ -116,6 +116,14 @@ network_prov_mgr_is_sm_idle();                  /* no session active */
 network_prov_mgr_configure_wifi_sta("ssid", "passphrase");
 network_prov_mgr_reset_wifi_sm_state_on_failure();
 network_prov_mgr_reset_wifi_sm_state_for_reprovision();
+
+/* Application-defined custom endpoints: create before start (so the transport
+ * advertises them — a BLE characteristic / HTTP route), register the handler
+ * after start (e.g. from the NETWORK_PROV_START event). Reachable over both
+ * BLE and SoftAP; up to CONFIG_NETWORK_PROV_MAX_CUSTOM_ENDPOINTS. */
+network_prov_mgr_endpoint_create("custom-data");
+network_prov_mgr_endpoint_register("custom-data", my_handler, my_ctx);
+network_prov_mgr_endpoint_unregister("custom-data");
 ```
 
 For the BLE transport, `<network_provisioning/scheme_ble.h>` adds

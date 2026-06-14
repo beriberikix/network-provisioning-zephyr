@@ -7,6 +7,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <string.h>
+#include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 
@@ -48,6 +50,25 @@ static void prov_event(void *user_data, enum network_prov_cb_event event, void *
 	default:
 		break;
 	}
+}
+
+/* Echo handler for the custom endpoint: returns "echo:" + request. */
+static int custom_echo(void *ctx, const uint8_t *inbuf, size_t inlen,
+		       uint8_t **outbuf, size_t *outlen)
+{
+	ARG_UNUSED(ctx);
+	static const char prefix[] = "echo:";
+	size_t plen = sizeof(prefix) - 1;
+	uint8_t *out = k_malloc(plen + inlen);
+
+	if (out == NULL) {
+		return -ENOMEM;
+	}
+	memcpy(out, prefix, plen);
+	memcpy(out + plen, inbuf, inlen);
+	*outbuf = out;
+	*outlen = plen + inlen;
+	return 0;
 }
 
 static void canned_scan_list(void)
@@ -96,9 +117,19 @@ static void dut_run(enum wifi_conn_status connect_outcome,
 						  app_caps, ARRAY_SIZE(app_caps)) == 0,
 		    "set_app_info failed");
 
+	/* Custom application endpoint (D1): created before start so it gets a
+	 * GATT characteristic, handler registered after start.
+	 */
+	TEST_ASSERT(network_prov_mgr_endpoint_create(PROV_TEST_CUSTOM_EP) == 0,
+		    "endpoint_create failed");
+
 	TEST_ASSERT(network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, PROV_TEST_POP,
 							PROV_TEST_NAME, NULL) == 0,
 		    "start_provisioning failed");
+
+	TEST_ASSERT(network_prov_mgr_endpoint_register(PROV_TEST_CUSTOM_EP, custom_echo,
+						       NULL) == 0,
+		    "endpoint_register failed");
 
 	/* The credential result arrives via prov_event(); keep the device (and
 	 * the GATT link) alive so the tester can finish polling status.
