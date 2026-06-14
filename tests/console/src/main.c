@@ -1,7 +1,7 @@
 /*
  * Integration test for the console (shell) transport.
  *
- * Runs the real provisioning manager with NETWORK_PROV_SCHEME_CONSOLE on
+ * Runs the real provisioning manager with the console scheme on
  * native_sim, backed by the fake Wi-Fi driver, and drives it through the
  * `net_prov` shell command over the dummy shell backend — exactly the way
  * esp_prov's console transport feeds (endpoint, session_id, hex) lines to the
@@ -28,6 +28,7 @@
 #include "network_config.pb.h"
 
 #include "network_provisioning/network_prov_mgr.h"
+#include "network_provisioning/scheme_console.h"
 #include "network_provisioning/test/fake_wifi.h"
 #include "prov_client.h"
 
@@ -124,7 +125,7 @@ static void program_network(void)
 static void *suite_setup(void)
 {
 	struct network_prov_mgr_config cfg = {
-		.scheme = NETWORK_PROV_SCHEME_CONSOLE,
+		.scheme = &network_prov_scheme_console,
 		.wifi_conn_attempts = 0,
 	};
 

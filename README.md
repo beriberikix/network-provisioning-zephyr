@@ -38,6 +38,7 @@ management API.
 | Wi-Fi credentials in NVS          | `wifi_credentials` subsystem (settings backend)            |
 | `esp_wifi` connect/scan           | `net_mgmt` (`NET_REQUEST_WIFI_CONNECT` / `_SCAN`)          |
 | `wifi_prov_mgr_*` API             | `network_prov_mgr_*` API (`network_provisioning/...`)      |
+| `network_prov_scheme_*` objects   | `network_prov_scheme_ble/softap/console` (`scheme_*.h`)    |
 
 ## Protocol surface
 
@@ -86,11 +87,15 @@ west.yml      standalone west manifest (pins the current stable Zephyr release)
 
 ```c
 #include <network_provisioning/network_prov_mgr.h>
+#include <network_provisioning/scheme_ble.h>     /* or scheme_softap.h / scheme_console.h */
 
+/* Pick the transport with a scheme object in the init config, e.g.
+ * config.scheme = &network_prov_scheme_ble; (or _softap / _console).
+ */
 network_prov_mgr_init(config);                 /* load settings + credential store */
 network_prov_mgr_is_provisioned(&provisioned); /* !wifi_credentials_is_empty()      */
 /* BLE: service_key unused (NULL). SoftAP: service_key = AP password (or NULL
- * for an open AP); select the transport with .scheme in the init config.
+ * for an open AP).
  */
 network_prov_mgr_start_provisioning(NETWORK_PROV_SECURITY_1, "abcd1234",
                                     "PROV_1234", NULL);
@@ -140,7 +145,7 @@ response, e.g. for app-side device matching.
 ### Console transport
 
 With `CONFIG_NETWORK_PROV_CONSOLE=y` (which needs `CONFIG_SHELL`) and
-`.scheme = NETWORK_PROV_SCHEME_CONSOLE`, the protocol is carried over the device
+`.scheme = &network_prov_scheme_console`, the protocol is carried over the device
 console by a single shell command:
 
 ```
@@ -196,7 +201,7 @@ Unit tests for the protocol core (protocomm engine, security schemes 0/1 —
 including a full client-side security-1 handshake), an integration suite for
 the HTTP transport (a loopback HTTP client exercising URI routing and the
 cookie session semantics), an integration suite for the console transport (the
-full manager with `NETWORK_PROV_SCHEME_CONSOLE` driven over the dummy shell
+full manager with the console scheme driven over the dummy shell
 backend — proto-ver, the sec1 handshake and an encrypted GetWifiStatus) and a
 unit test for the simulated Wi-Fi backend run on `native_sim`:
 

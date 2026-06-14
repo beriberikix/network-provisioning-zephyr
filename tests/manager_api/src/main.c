@@ -17,6 +17,7 @@
 #include <zephyr/ztest.h>
 
 #include "network_provisioning/network_prov_mgr.h"
+#include "network_provisioning/scheme_softap.h"
 #include "network_provisioning/test/fake_wifi.h"
 
 #define GOOD_SSID "HomeNet"
@@ -68,7 +69,7 @@ static void program_network(void)
 static void start_mgr(void)
 {
 	struct network_prov_mgr_config cfg = {
-		.scheme = NETWORK_PROV_SCHEME_SOFTAP,
+		.scheme = &network_prov_scheme_softap,
 		.app_event_handler = { .event_cb = evt },
 		.wifi_conn_attempts = 0,
 	};
@@ -123,7 +124,7 @@ ZTEST(manager_api, test_configure_wifi_sta_wrong_password)
 ZTEST(manager_api, test_disable_auto_stop_keeps_service_up)
 {
 	struct network_prov_mgr_config cfg = {
-		.scheme = NETWORK_PROV_SCHEME_SOFTAP,
+		.scheme = &network_prov_scheme_softap,
 		.app_event_handler = { .event_cb = evt },
 		.wifi_conn_attempts = 0,
 	};
@@ -182,7 +183,7 @@ static int dummy_handler(void *ctx, const uint8_t *in, size_t inlen,
 ZTEST(manager_api, test_custom_endpoint_api)
 {
 	struct network_prov_mgr_config cfg = {
-		.scheme = NETWORK_PROV_SCHEME_SOFTAP,
+		.scheme = &network_prov_scheme_softap,
 		.app_event_handler = { .event_cb = evt },
 		.wifi_conn_attempts = 0,
 	};

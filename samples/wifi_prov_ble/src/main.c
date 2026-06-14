@@ -21,6 +21,7 @@
 #include <zephyr/net/wifi_credentials.h>
 
 #include <network_provisioning/network_prov_mgr.h>
+#include <network_provisioning/scheme_ble.h>
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
@@ -273,7 +274,7 @@ static int run_provisioning(void)
 int main(void)
 {
 	struct network_prov_mgr_config config = {
-		.scheme = NETWORK_PROV_SCHEME_BLE,
+		.scheme = &network_prov_scheme_ble,
 		.app_event_handler = {
 			.event_cb = prov_event,
 			.user_data = NULL,
