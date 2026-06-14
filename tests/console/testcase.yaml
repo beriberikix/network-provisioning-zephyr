@@ -1,0 +1,11 @@
+tests:
+  network_provisioning.console:
+    modules:
+      - nanopb
+    tags:
+      - network_provisioning
+      - wifi
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

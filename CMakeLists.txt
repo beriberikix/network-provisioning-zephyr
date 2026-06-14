@@ -58,6 +58,10 @@ if(CONFIG_NETWORK_PROV_CORE)
                           KVMA RAM_REGION GROUP RODATA_REGION)
   endif()
 
+  if(CONFIG_NETWORK_PROV_CONSOLE)
+    zephyr_library_sources(src/protocomm_console.c)
+  endif()
+
   if(CONFIG_NETWORK_PROV_MGR)
     zephyr_library_sources(
       src/network_prov_mgr.c

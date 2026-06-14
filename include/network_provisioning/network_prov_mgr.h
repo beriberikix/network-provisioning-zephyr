@@ -70,6 +70,11 @@ enum network_prov_scheme {
 	 *  (requires CONFIG_NETWORK_PROV_SOFTAP).
 	 */
 	NETWORK_PROV_SCHEME_SOFTAP = 1,
+	/** Device console (protocomm over a `net_prov` shell command), for
+	 *  bring-up/debug — what `esp_prov --transport console` speaks
+	 *  (requires CONFIG_NETWORK_PROV_CONSOLE).
+	 */
+	NETWORK_PROV_SCHEME_CONSOLE = 2,
 };
 
 /** Manager configuration passed to @ref network_prov_mgr_init. */

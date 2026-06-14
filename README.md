@@ -4,7 +4,7 @@
 
 A Zephyr RTOS port of Espressif's
 [network provisioning](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/provisioning.html)
-protocol for **Wi-Fi over Bluetooth LE or SoftAP**.
+protocol for **Wi-Fi over Bluetooth LE, SoftAP or the device console**.
 
 It speaks the same protocomm wire protocol as ESP-IDF, so the **stock Espressif
 provisioning apps work out of the box** — no app changes, no custom client:
@@ -20,8 +20,8 @@ Wi-Fi credentials are stored through Zephyr's **native `wifi_credentials`
 subsystem**, and the connection is driven through the standard `net_mgmt` Wi-Fi
 management API.
 
-> Scope: Wi-Fi only (Thread is intentionally out of scope), BLE and SoftAP
-> transports, security schemes **0** (plaintext) and **1**
+> Scope: Wi-Fi only (Thread is intentionally out of scope), BLE, SoftAP and
+> console transports, security schemes **0** (plaintext) and **1**
 > (Curve25519 + AES-256-CTR + proof-of-possession). Security 2 (SRP6a) is not
 > implemented.
 
@@ -31,6 +31,7 @@ management API.
 | --------------------------------- | ---------------------------------------------------------- |
 | protocomm BLE transport (GATT)    | Zephyr Bluetooth GATT (`BT_GATT_DYNAMIC_DB`)               |
 | protocomm HTTP transport (httpd)  | Zephyr HTTP server (`CONFIG_HTTP_SERVER`)                  |
+| protocomm console transport       | Zephyr shell command (`CONFIG_SHELL`)                      |
 | SoftAP + DHCP (esp_netif)         | `net_mgmt` AP mode + `CONFIG_NET_DHCPV4_SERVER`            |
 | protobuf (protobuf-c)             | nanopb (`CONFIG_NANOPB`)                                    |
 | security1 crypto (mbedTLS)        | PSA Crypto: X25519 ECDH, AES-256-CTR, SHA-256              |
@@ -45,7 +46,11 @@ endpoint name is carried in the characteristic's `0x2901` (Characteristic User
 Description) descriptor, which is how the apps map names to characteristics.
 Over SoftAP, each endpoint is an HTTP POST URI (`/proto-ver`, `/prov-session`,
 …) served on the device-hosted access point at `192.168.4.1:80`, with the
-session tracked by a `session=<id>` cookie.
+session tracked by a `session=<id>` cookie. Over the console
+(`CONFIG_NETWORK_PROV_CONSOLE`), the same endpoints are reached through a single
+shell command — `net_prov <endpoint> <session_id> <hex-request>` — which prints
+the response as lowercase hex; this is the transport `esp_prov --transport
+console` speaks, useful for bring-up and debugging without BLE or a Wi-Fi AP.
 
 | Endpoint       | Purpose                                                        |
 | -------------- | -------------------------------------------------------------- |
@@ -118,9 +123,9 @@ network_prov_mgr_reset_wifi_sm_state_on_failure();
 network_prov_mgr_reset_wifi_sm_state_for_reprovision();
 
 /* Application-defined custom endpoints: create before start (so the transport
- * advertises them — a BLE characteristic / HTTP route), register the handler
- * after start (e.g. from the NETWORK_PROV_START event). Reachable over both
- * BLE and SoftAP; up to CONFIG_NETWORK_PROV_MAX_CUSTOM_ENDPOINTS. */
+ * advertises them — a BLE characteristic / HTTP route / console endpoint),
+ * register the handler after start (e.g. from the NETWORK_PROV_START event).
+ * Reachable over all transports; up to CONFIG_NETWORK_PROV_MAX_CUSTOM_ENDPOINTS. */
 network_prov_mgr_endpoint_create("custom-data");
 network_prov_mgr_endpoint_register("custom-data", my_handler, my_ctx);
 network_prov_mgr_endpoint_unregister("custom-data");
@@ -131,6 +136,33 @@ For the BLE transport, `<network_provisioning/scheme_ble.h>` adds
 `network_prov_scheme_ble_set_mfg_data()` (call before `start_provisioning`) to
 override the 128-bit GATT service UUID and add manufacturer data to the scan
 response, e.g. for app-side device matching.
+
+### Console transport
+
+With `CONFIG_NETWORK_PROV_CONSOLE=y` (which needs `CONFIG_SHELL`) and
+`.scheme = NETWORK_PROV_SCHEME_CONSOLE`, the protocol is carried over the device
+console by a single shell command:
+
+```
+net_prov <endpoint> <session_id> <hex-request>
+```
+
+It decodes the hex request, dispatches it to the named protocomm endpoint and
+prints the response as lowercase hex. The `session_id` mirrors the per-session
+reset of the other transports — changing it opens a fresh protocomm session
+(resetting the security handshake), as a BLE reconnect or a new HTTP cookie
+does. `service_name`/`service_key` are unused for this scheme.
+
+`esp_prov`'s console transport is human-in-the-loop: drive it with
+
+```sh
+esp_prov.py --transport console --sec_ver 1 --pop abcd1234 \
+            --ssid HomeNet --passphrase correct-horse-battery
+```
+
+and for each `Client->Device msg : <endpoint> <session_id> <hex>` line it prints,
+run `net_prov <endpoint> <session_id> <hex>` on the device console and paste the
+device's hex response back into `esp_prov`.
 
 ## Quick start
 
@@ -163,8 +195,10 @@ ESP SoftAP Provisioning app (or `esp_prov.py --transport softap`).
 Unit tests for the protocol core (protocomm engine, security schemes 0/1 —
 including a full client-side security-1 handshake), an integration suite for
 the HTTP transport (a loopback HTTP client exercising URI routing and the
-cookie session semantics) and a unit test for the simulated Wi-Fi backend run
-on `native_sim`:
+cookie session semantics), an integration suite for the console transport (the
+full manager with `NETWORK_PROV_SCHEME_CONSOLE` driven over the dummy shell
+backend — proto-ver, the sec1 handshake and an encrypted GetWifiStatus) and a
+unit test for the simulated Wi-Fi backend run on `native_sim`:
 
 ```sh
 west twister -T network-provisioning-zephyr/tests -p native_sim --inline-logs
@@ -201,10 +235,11 @@ release is a one-line bump of that pin.
 ## Using it as a module in an existing workspace
 
 Add this repo to your `west.yml` and enable `CONFIG_NETWORK_PROV_MGR=y` plus
-at least one transport: `CONFIG_NETWORK_PROV_BLE=y` and/or
-`CONFIG_NETWORK_PROV_SOFTAP=y`. The required Zephyr subsystems (`WIFI`,
+at least one transport: `CONFIG_NETWORK_PROV_BLE=y`, `CONFIG_NETWORK_PROV_SOFTAP=y`
+and/or `CONFIG_NETWORK_PROV_CONSOLE=y`. The required Zephyr subsystems (`WIFI`,
 `MBEDTLS`, `NANOPB`, `WIFI_CREDENTIALS`, `SETTINGS`, and per transport
-`BT_PERIPHERAL` + a large ATT MTU or `HTTP_SERVER` + `NET_DHCPV4_SERVER`) are
+`BT_PERIPHERAL` + a large ATT MTU, `HTTP_SERVER` + `NET_DHCPV4_SERVER`, or
+`SHELL`) are
 set up in the samples' `prj.conf` files — copy the relevant lines from
 [`wifi_prov_ble`](samples/wifi_prov_ble/prj.conf) or
 [`wifi_prov_softap`](samples/wifi_prov_softap/prj.conf).
