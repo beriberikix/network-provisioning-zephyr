@@ -70,7 +70,7 @@ int network_prov_wifi_scan_handler(void *priv, const uint8_t *inbuf, size_t inle
 /*
  * Transport back-ends. Each is fronted by a network_prov_scheme vtable; the
  * start() call registers the protocomm endpoints with the transport and brings
- * it up, stop() tears it down. All return 0 or a negative errno.
+ * it up (returns 0 or a negative errno), and the void stop() tears it down.
  */
 
 /**

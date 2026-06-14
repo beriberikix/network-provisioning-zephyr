@@ -40,8 +40,8 @@ extern const struct network_prov_scheme network_prov_scheme_ble;
  * @return 0 on success, -EINVAL if @p uuid128 is NULL.
  *
  * @code
- * static const uint8_t uuid[16] = BT_UUID_128_ENCODE(
- *         0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef0);
+ * static const uint8_t uuid[16] = { BT_UUID_128_ENCODE(
+ *         0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef0) };
  *
  * network_prov_mgr_init(config);
  * network_prov_scheme_ble_set_service_uuid(uuid);     // before start

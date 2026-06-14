@@ -299,34 +299,42 @@ ZTEST(manager_api, test_remaining_conn_attempts)
 	network_prov_mgr_deinit();
 }
 
-/* Applies good credentials from a separate thread so the main test thread can
- * block in network_prov_mgr_wait() first.
+/* Runs the blocking wait() on a helper thread so the test can bound it with a
+ * timed join: a regression then fails fast instead of hanging the whole suite
+ * on wait()'s internal K_FOREVER until the harness timeout.
  */
-K_THREAD_STACK_DEFINE(apply_stack, 2048);
-static struct k_thread apply_thread;
+K_THREAD_STACK_DEFINE(waiter_stack, 2048);
+static struct k_thread waiter_thread;
 
-static void apply_creds_fn(void *a, void *b, void *c)
+static void waiter_fn(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
-	k_sleep(K_MSEC(100));
-	(void)network_prov_mgr_configure_wifi_sta(GOOD_SSID, GOOD_PASS);
+	network_prov_mgr_wait(); /* blocks on the manager's done semaphore */
 }
 
 ZTEST(manager_api, test_wait_unblocks_on_success)
 {
 	start_mgr();
 
-	k_thread_create(&apply_thread, apply_stack, K_THREAD_STACK_SIZEOF(apply_stack),
-			apply_creds_fn, NULL, NULL, NULL,
+	/* Start the waiter before applying credentials. The done semaphore makes
+	 * this race-free: even if CRED_SUCCESS fires before wait() runs, the
+	 * pending give is taken immediately.
+	 */
+	k_thread_create(&waiter_thread, waiter_stack, K_THREAD_STACK_SIZEOF(waiter_stack),
+			waiter_fn, NULL, NULL, NULL,
 			K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
 
-	/* Blocks until the apply path emits NETWORK_PROV_CRED_SUCCESS. */
-	network_prov_mgr_wait();
-	zassert_true(t.success, "wait() returned before CRED_SUCCESS");
+	zassert_equal(network_prov_mgr_configure_wifi_sta(GOOD_SSID, GOOD_PASS), 0);
 
-	zassert_equal(k_thread_join(&apply_thread, K_SECONDS(2)), 0);
+	/* wait() must return once CRED_SUCCESS is emitted; the bounded join turns
+	 * a hang into a prompt failure.
+	 */
+	zassert_equal(k_thread_join(&waiter_thread, K_SECONDS(5)), 0,
+		      "wait() did not return after CRED_SUCCESS");
+	zassert_true(t.success, "expected CRED_SUCCESS");
+
 	network_prov_mgr_stop_provisioning();
 	network_prov_mgr_deinit();
 }
