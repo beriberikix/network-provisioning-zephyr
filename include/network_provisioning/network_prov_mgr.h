@@ -104,6 +104,54 @@ int network_prov_mgr_init(struct network_prov_mgr_config config);
 void network_prov_mgr_deinit(void);
 
 /**
+ * Handler for an application-defined custom endpoint. Receives the (decrypted)
+ * request and returns a response allocated with k_malloc() in @p outbuf /
+ * @p outlen (freed by the caller). Same contract as the built-in handlers.
+ *
+ * @return 0 on success, negative errno on failure.
+ */
+typedef int (*network_prov_endpoint_handler_t)(void *user_ctx,
+					       const uint8_t *inbuf, size_t inlen,
+					       uint8_t **outbuf, size_t *outlen);
+
+/**
+ * Create an application-specific protocomm endpoint. Must be called after
+ * @ref network_prov_mgr_init and before @ref network_prov_mgr_start_provisioning
+ * so the endpoint gets a BLE characteristic / HTTP route when the transport
+ * service is built. Register its handler after provisioning starts with
+ * @ref network_prov_mgr_endpoint_register. Mirrors ESP-IDF's
+ * network_prov_mgr_endpoint_create().
+ *
+ * @param ep_name Endpoint name (also the BLE CUD / HTTP URI); must be unique,
+ *                not a built-in name, and shorter than 16 bytes.
+ * @return 0 on success, -EINVAL on a bad name, -EPERM if not initialised or
+ *         already started, -EALREADY on a duplicate/built-in name, -ENOSPC if
+ *         the custom-endpoint table is full
+ *         (CONFIG_NETWORK_PROV_MAX_CUSTOM_ENDPOINTS).
+ */
+int network_prov_mgr_endpoint_create(const char *ep_name);
+
+/**
+ * Attach a handler to a created custom endpoint. Call after provisioning has
+ * started (e.g. from the NETWORK_PROV_START event). Mirrors ESP-IDF's
+ * network_prov_mgr_endpoint_register().
+ *
+ * @return 0 on success, -EINVAL on bad args, -EPERM if not started, -ENOENT if
+ *         the endpoint was not created.
+ */
+int network_prov_mgr_endpoint_register(const char *ep_name,
+				       network_prov_endpoint_handler_t handler,
+				       void *user_ctx);
+
+/**
+ * Detach a custom endpoint's handler; subsequent requests report unsupported
+ * until it is registered again. Mirrors network_prov_mgr_endpoint_unregister().
+ *
+ * @return 0 on success, -EINVAL on a NULL name, -ENOENT if not created.
+ */
+int network_prov_mgr_endpoint_unregister(const char *ep_name);
+
+/**
  * Advertise an application-specific section in the proto-ver capabilities JSON.
  *
  * Adds a sibling object to the built-in "prov" object, keyed by @p label:
