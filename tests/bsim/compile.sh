@@ -12,12 +12,17 @@ REPO_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")/../..")"
 
 source "${ZEPHYR_BASE}/tests/bsim/compile.source"
 
-# Build the test as an out-of-tree application against this module. Add it via
+# Build the tests as out-of-tree applications against this module. Add it via
 # EXTRA_ZEPHYR_MODULES (additive) rather than ZEPHYR_MODULES, which would
 # replace the workspace's auto-discovered modules (nanopb, mbedtls, ...).
 cmake_extra_args="-DEXTRA_ZEPHYR_MODULES=${REPO_DIR}" \
 	app_root="${REPO_DIR}" app="tests/bsim/ble_e2e" \
 	exe_name="bs_${BOARD_TS}_network_prov_ble_e2e" \
+	compile
+
+cmake_extra_args="-DEXTRA_ZEPHYR_MODULES=${REPO_DIR}" \
+	app_root="${REPO_DIR}" app="tests/bsim/thread_e2e" \
+	exe_name="bs_${BOARD_TS}_network_prov_thread_e2e" \
 	compile
 
 wait_for_background_jobs

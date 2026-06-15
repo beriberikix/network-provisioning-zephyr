@@ -272,6 +272,11 @@ network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_success.sh
 network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_wrong_password.sh
 ```
 
+A second BabbleSim test (`tests/bsim/thread_e2e`) does the same for **Thread**
+over a simulated 802.15.4 radio: a node applies a dataset and attaches (forms
+its own network as leader), and a separate scenario has the device discover a
+peer node's network via `otThreadDiscover`.
+
 [bsim]: https://babblesim.github.io/
 
 An **esp_prov SoftAP end-to-end test** ([`tests/esp_prov`](tests/esp_prov))

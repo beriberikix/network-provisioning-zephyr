@@ -43,8 +43,8 @@ A compile/link integration check for the Thread network type
 prov-config handler driven through OpenThread (`otDatasetSetActiveTlvs` and the
 Set → Apply → GetStatus path) plus the prov-scan handler (`otThreadDiscover`
 Start → Status → Result). OpenThread needs a real 802.15.4 radio, which
-`native_sim` lacks, so this is **build_only on `nrf52840dk/nrf52840`**; a full
-BabbleSim attach E2E (à la `ble_e2e`) is a follow-up.
+`native_sim` lacks, so this is **build_only on `nrf52840dk/nrf52840`**; the
+runtime behaviour is exercised by the BabbleSim Thread E2E below.
 
 ```sh
 west twister -T network-provisioning-zephyr/tests/thread_config \
@@ -64,6 +64,21 @@ provisioning and a wrong-password failure injection are checked. Requires
 BOARD=nrf52_bsim/native network-provisioning-zephyr/tests/bsim/compile.sh
 network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_success.sh
 network-provisioning-zephyr/tests/bsim/ble_e2e/test_scripts/provision_wrong_password.sh
+```
+
+## BabbleSim Thread end-to-end (`tests/bsim/thread_e2e`)
+
+Runs the real manager (Thread network type) + OpenThread over the simulated
+nrf52_bsim 802.15.4 radio — the runtime test `native_sim` can't host. Two
+scenarios: `thread_attach` (one node applies a dataset via the config handler,
+forms its own network and attaches as leader → `CRED_SUCCESS`) and `thread_scan`
+(a peer node forms a known network and the DUT's scan handler discovers it via
+`otThreadDiscover`). Built by the same `compile.sh`:
+
+```sh
+BOARD=nrf52_bsim/native network-provisioning-zephyr/tests/bsim/compile.sh
+network-provisioning-zephyr/tests/bsim/thread_e2e/test_scripts/thread_attach.sh
+network-provisioning-zephyr/tests/bsim/thread_e2e/test_scripts/thread_scan.sh
 ```
 
 ## esp_prov SoftAP end-to-end (`tests/esp_prov`)

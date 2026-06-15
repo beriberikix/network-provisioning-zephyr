@@ -90,6 +90,8 @@ jobs:
           "$repo/tests/bsim/compile.sh"
           "$repo/tests/bsim/ble_e2e/test_scripts/provision_success.sh"
           "$repo/tests/bsim/ble_e2e/test_scripts/provision_wrong_password.sh"
+          "$repo/tests/bsim/thread_e2e/test_scripts/thread_attach.sh"
+          "$repo/tests/bsim/thread_e2e/test_scripts/thread_scan.sh"
 
   esp_prov:
     name: esp_prov SoftAP end-to-end (native_sim)
