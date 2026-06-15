@@ -53,6 +53,13 @@ static struct {
 	bool in_progress;
 } ts;
 
+/* Guards ts: discover_cb() writes it from the OpenThread thread while the
+ * handler reads it from the transport thread (a client may poll Status/Result
+ * during a non-blocking sweep). Critical sections are short (field reads and a
+ * bounded memcpy); kernel calls (sem give, encode) stay outside the lock.
+ */
+static struct k_spinlock ts_lock;
+
 /* Given by the discovery callback's terminating (NULL) result so a blocking
  * ScanStart can hold its response until the sweep completes (ESP-IDF semantics).
  */
@@ -66,26 +73,34 @@ static void discover_cb(otActiveScanResult *result, void *context)
 	ARG_UNUSED(context);
 
 	if (result == NULL) {
-		ts.finished = true;
-		ts.in_progress = false;
-		LOG_INF("Thread scan done: %u network(s)", (unsigned int)ts.count);
+		size_t count;
+
+		K_SPINLOCK(&ts_lock) {
+			ts.finished = true;
+			ts.in_progress = false;
+			count = ts.count;
+		}
+		LOG_INF("Thread scan done: %u network(s)", (unsigned int)count);
 		k_sem_give(&scan_done_sem);
 		return;
 	}
 
-	if (ts.count >= SCAN_MAX_ENTRIES) {
-		return;
-	}
-	struct thread_scan_entry *e = &ts.entries[ts.count++];
+	K_SPINLOCK(&ts_lock) {
+		if (ts.count < SCAN_MAX_ENTRIES) {
+			struct thread_scan_entry *e = &ts.entries[ts.count++];
 
-	e->pan_id = result->mPanId;
-	e->channel = result->mChannel;
-	e->rssi = result->mRssi;
-	e->lqi = result->mLqi;
-	memcpy(e->ext_addr, result->mExtAddress.m8, sizeof(e->ext_addr));
-	memcpy(e->ext_pan_id, result->mExtendedPanId.m8, sizeof(e->ext_pan_id));
-	strncpy(e->network_name, result->mNetworkName.m8, sizeof(e->network_name) - 1);
-	e->network_name[sizeof(e->network_name) - 1] = '\0';
+			e->pan_id = result->mPanId;
+			e->channel = result->mChannel;
+			e->rssi = result->mRssi;
+			e->lqi = result->mLqi;
+			memcpy(e->ext_addr, result->mExtAddress.m8, sizeof(e->ext_addr));
+			memcpy(e->ext_pan_id, result->mExtendedPanId.m8,
+			       sizeof(e->ext_pan_id));
+			strncpy(e->network_name, result->mNetworkName.m8,
+				sizeof(e->network_name) - 1);
+			e->network_name[sizeof(e->network_name) - 1] = '\0';
+		}
+	}
 }
 
 int network_prov_thread_scan_init(void)
@@ -103,9 +118,11 @@ static Status do_scan_start(uint32_t channel_mask)
 {
 	otInstance *inst = openthread_get_default_instance();
 
-	ts.count = 0;
-	ts.finished = false;
-	ts.in_progress = true;
+	K_SPINLOCK(&ts_lock) {
+		ts.count = 0;
+		ts.finished = false;
+		ts.in_progress = true;
+	}
 
 	openthread_mutex_lock();
 	/* channel_mask 0 → scan all channels. PAN-ID broadcast → discover every
@@ -117,8 +134,10 @@ static Status do_scan_start(uint32_t channel_mask)
 
 	if (err != OT_ERROR_NONE) {
 		LOG_ERR("otThreadDiscover failed: %d", err);
-		ts.in_progress = false;
-		ts.finished = true;
+		K_SPINLOCK(&ts_lock) {
+			ts.in_progress = false;
+			ts.finished = true;
+		}
 		return Status_InternalError;
 	}
 	return Status_Success;
@@ -180,8 +199,10 @@ int network_prov_thread_scan_handler(void *priv, const uint8_t *inbuf, size_t in
 	case NetworkScanMsgType_TypeCmdScanThreadStatus:
 		resp.msg = NetworkScanMsgType_TypeRespScanThreadStatus;
 		resp.which_payload = NetworkScanPayload_resp_scan_thread_status_tag;
-		resp.payload.resp_scan_thread_status.scan_finished = ts.finished;
-		resp.payload.resp_scan_thread_status.result_count = ts.count;
+		K_SPINLOCK(&ts_lock) {
+			resp.payload.resp_scan_thread_status.scan_finished = ts.finished;
+			resp.payload.resp_scan_thread_status.result_count = ts.count;
+		}
 		return encode_resp(&resp, outbuf, outlen);
 
 	case NetworkScanMsgType_TypeCmdScanThreadResult: {
@@ -194,22 +215,29 @@ int network_prov_thread_scan_handler(void *priv, const uint8_t *inbuf, size_t in
 		RespScanThreadResult *out = &resp.payload.resp_scan_thread_result;
 		size_t n = 0;
 
-		for (uint32_t i = start;
-		     i < ts.count && n < ARRAY_SIZE(out->entries) && n < want; i++) {
-			struct thread_scan_entry *e = &ts.entries[i];
-			ThreadScanResult *t = &out->entries[n++];
+		/* Snapshot the requested page under the lock so discover_cb can't
+		 * mutate ts.entries/count mid-copy.
+		 */
+		K_SPINLOCK(&ts_lock) {
+			for (uint32_t i = start;
+			     i < ts.count && n < ARRAY_SIZE(out->entries) && n < want;
+			     i++) {
+				struct thread_scan_entry *e = &ts.entries[i];
+				ThreadScanResult *t = &out->entries[n++];
 
-			t->pan_id = e->pan_id;
-			t->channel = e->channel;
-			t->rssi = e->rssi;
-			t->lqi = e->lqi;
-			t->ext_addr.size = sizeof(e->ext_addr);
-			memcpy(t->ext_addr.bytes, e->ext_addr, sizeof(e->ext_addr));
-			t->ext_pan_id.size = sizeof(e->ext_pan_id);
-			memcpy(t->ext_pan_id.bytes, e->ext_pan_id, sizeof(e->ext_pan_id));
-			strncpy(t->network_name, e->network_name,
-				sizeof(t->network_name) - 1);
-			t->network_name[sizeof(t->network_name) - 1] = '\0';
+				t->pan_id = e->pan_id;
+				t->channel = e->channel;
+				t->rssi = e->rssi;
+				t->lqi = e->lqi;
+				t->ext_addr.size = sizeof(e->ext_addr);
+				memcpy(t->ext_addr.bytes, e->ext_addr, sizeof(e->ext_addr));
+				t->ext_pan_id.size = sizeof(e->ext_pan_id);
+				memcpy(t->ext_pan_id.bytes, e->ext_pan_id,
+				       sizeof(e->ext_pan_id));
+				strncpy(t->network_name, e->network_name,
+					sizeof(t->network_name) - 1);
+				t->network_name[sizeof(t->network_name) - 1] = '\0';
+			}
 		}
 		out->entries_count = n;
 		return encode_resp(&resp, outbuf, outlen);
