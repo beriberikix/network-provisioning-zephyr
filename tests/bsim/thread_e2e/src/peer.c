@@ -53,7 +53,8 @@ static void peer_main(void)
 	 * is not missed.
 	 */
 	peer_cb.otCallback = peer_state;
-	(void)openthread_state_changed_callback_register(&peer_cb);
+	TEST_ASSERT(openthread_state_changed_callback_register(&peer_cb) == 0,
+		    "peer: state callback register failed");
 
 	openthread_mutex_lock();
 	rc = build_peer_dataset(&tlvs);

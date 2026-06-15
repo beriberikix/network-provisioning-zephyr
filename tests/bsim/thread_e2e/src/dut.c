@@ -99,7 +99,8 @@ static int run_scan(const NetworkScanPayload *req, NetworkScanPayload *resp)
 	uint8_t buf[64];
 	pb_ostream_t os = pb_ostream_from_buffer(buf, sizeof(buf));
 
-	TEST_ASSERT(pb_encode(&os, NetworkScanPayload_fields, req), "encode failed");
+	TEST_ASSERT(pb_encode(&os, NetworkScanPayload_fields, req), "encode failed: %s",
+		    PB_GET_ERROR(&os));
 
 	uint8_t *out = NULL;
 	size_t outlen = 0;
@@ -111,7 +112,8 @@ static int run_scan(const NetworkScanPayload *req, NetworkScanPayload *resp)
 
 	pb_istream_t is = pb_istream_from_buffer(out, outlen);
 
-	TEST_ASSERT(pb_decode(&is, NetworkScanPayload_fields, resp), "decode failed");
+	TEST_ASSERT(pb_decode(&is, NetworkScanPayload_fields, resp), "decode failed: %s",
+		    PB_GET_ERROR(&is));
 	k_free(out);
 	return 0;
 }
@@ -134,9 +136,10 @@ static void dut_scan_main(void)
 	req.payload.cmd_scan_thread_start.channel_mask = BIT(PEER_CHANNEL);
 
 	TEST_ASSERT(run_scan(&req, &resp) == 0, "scan start failed");
-	TEST_ASSERT(resp.payload.resp_scan_thread_start.status == Status_Success ||
-			    resp.status == Status_Success,
-		    "scan start status not success");
+	TEST_ASSERT(resp.msg == NetworkScanMsgType_TypeRespScanThreadStart,
+		    "unexpected scan-start resp msg %d", resp.msg);
+	/* RespScanThreadStart is empty; the start status is the top-level field. */
+	TEST_ASSERT(resp.status == Status_Success, "scan start status %d", resp.status);
 
 	/* Pull the results and look for the peer's network. */
 	req = (NetworkScanPayload)NetworkScanPayload_init_default;
