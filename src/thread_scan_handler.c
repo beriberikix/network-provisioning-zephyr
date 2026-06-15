@@ -17,6 +17,7 @@
 
 #include <openthread.h> /* Zephyr wrapper: instance + mutex */
 #include <openthread/instance.h>
+#include <openthread/ip6.h>
 #include <openthread/link.h>
 #include <openthread/thread.h>
 
@@ -125,10 +126,19 @@ static Status do_scan_start(uint32_t channel_mask)
 	}
 
 	openthread_mutex_lock();
-	/* channel_mask 0 → scan all channels. PAN-ID broadcast → discover every
-	 * network; not a joiner; no EUI-64 filtering.
+	/* otThreadDiscover requires the IPv6 interface up (it returns
+	 * INVALID_STATE otherwise); a provisioning scan runs before any dataset is
+	 * applied, so bring it up here. Idempotent.
 	 */
-	otError err = otThreadDiscover(inst, channel_mask, OT_PANID_BROADCAST, false,
+	(void)otIp6SetEnabled(inst, true);
+
+	/* An unset (0) channel_mask means "scan every supported channel"; a literal
+	 * 0 bit vector would scan nothing. PAN-ID broadcast discovers every network;
+	 * not a joiner; no EUI-64 filtering.
+	 */
+	uint32_t channels = channel_mask ? channel_mask
+					 : otLinkGetSupportedChannelMask(inst);
+	otError err = otThreadDiscover(inst, channels, OT_PANID_BROADCAST, false,
 				       false, discover_cb, NULL);
 	openthread_mutex_unlock();
 
