@@ -63,12 +63,23 @@ if(CONFIG_NETWORK_PROV_CORE)
   endif()
 
   if(CONFIG_NETWORK_PROV_MGR)
-    zephyr_library_sources(
-      src/network_prov_mgr.c
-      src/wifi_config_handler.c
-      src/wifi_scan_handler.c
-      src/wifi_ctrl_handler.c
-    )
+    zephyr_library_sources(src/network_prov_mgr.c)
+
+    # The prov-config/prov-scan/prov-ctrl endpoint handlers are
+    # network-type-specific (NETWORK_PROV_NETWORK_TYPE choice): Wi-Fi talks to
+    # net_mgmt + wifi_credentials, Thread to OpenThread. Exactly one set builds.
+    if(CONFIG_NETWORK_PROV_NETWORK_TYPE_WIFI)
+      zephyr_library_sources(
+        src/wifi_config_handler.c
+        src/wifi_scan_handler.c
+        src/wifi_ctrl_handler.c
+      )
+    elseif(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+      zephyr_library_sources(
+        src/thread_config_handler.c
+        src/thread_ctrl_handler.c
+      )
+    endif()
   endif()
 endif()
 

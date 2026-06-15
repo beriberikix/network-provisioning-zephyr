@@ -189,3 +189,34 @@ jobs:
         run: |
           west build -b ${{ matrix.board }} \
             network-provisioning-zephyr/samples/${{ matrix.sample }}
+
+  thread:
+    name: Thread build (nrf52840dk)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Zephyr workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          toolchains: arm-zephyr-eabi
+
+      - name: Install nanopb generator dependencies
+        run: pip install grpcio-tools==1.68.0
+
+      - name: Build the Thread sample and integration test
+        # OpenThread needs a real 802.15.4 radio (native_sim has none), so the
+        # Thread network type is build-checked on nrf52840dk (BLE + 802.15.4).
+        run: |
+          west twister --build-only --inline-logs -v -p nrf52840dk/nrf52840 \
+            -T network-provisioning-zephyr/samples/thread_prov_ble \
+            -T network-provisioning-zephyr/tests/thread_config

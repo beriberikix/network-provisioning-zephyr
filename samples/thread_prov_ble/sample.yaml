@@ -1,0 +1,16 @@
+sample:
+  name: Thread Provisioning over BLE
+  description: >
+    Provision a Thread Active Operational Dataset from the stock ESP
+    provisioning apps over a secure protocomm session, applied through
+    OpenThread.
+tests:
+  sample.net.thread_prov_ble:
+    platform_allow:
+      - nrf52840dk/nrf52840
+    tags:
+      - bluetooth
+      - thread
+      - provisioning
+    harness: bluetooth
+    build_only: true

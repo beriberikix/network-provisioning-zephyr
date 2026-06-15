@@ -68,6 +68,39 @@ int network_prov_wifi_scan_handler(void *priv, const uint8_t *inbuf, size_t inle
 				   uint8_t **outbuf, size_t *outlen);
 
 /*
+ * Thread provisioning (CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD). The shared
+ * prov-config and prov-ctrl endpoints carry the Thread message types instead of
+ * the Wi-Fi ones; the manager registers whichever set matches the configured
+ * network type. Thread scan (prov-scan) is not yet implemented.
+ */
+
+/** Initialise the Thread config handler (registers the OpenThread state callback). */
+int network_prov_thread_config_init(void);
+/** Tear down the Thread config handler. */
+void network_prov_thread_config_deinit(void);
+/** Reset Thread provisioning state: disable Thread and drop the staged dataset. */
+void network_prov_thread_config_reset(void);
+/**
+ * Erase the persisted Thread dataset (the device reverts to uncommissioned).
+ * @return 0 on success, negative errno otherwise.
+ */
+int network_prov_thread_config_erase(void);
+/** True if an Active Operational Dataset is committed (otDatasetIsCommissioned). */
+bool network_prov_thread_is_commissioned(void);
+/**
+ * Apply a raw Active Operational Dataset (TLVs) and bring Thread up — backs a
+ * programmatic apply mirroring network_prov_wifi_config_set_and_apply().
+ * @return 0 on success, negative errno on failure.
+ */
+int network_prov_thread_config_set_and_apply(const uint8_t *dataset, size_t len);
+/** protocomm handler for the prov-config endpoint (Thread NetworkConfigPayload). */
+int network_prov_thread_config_handler(void *priv, const uint8_t *inbuf, size_t inlen,
+				       uint8_t **outbuf, size_t *outlen);
+/** protocomm handler for the prov-ctrl endpoint (Thread NetworkCtrlPayload). */
+int network_prov_thread_ctrl_handler(void *priv, const uint8_t *inbuf, size_t inlen,
+				     uint8_t **outbuf, size_t *outlen);
+
+/*
  * Transport back-ends. Each is fronted by a network_prov_scheme vtable; the
  * start() call registers the protocomm endpoints with the transport and brings
  * it up (returns 0 or a negative errno), and the void stop() tears it down.

@@ -5,7 +5,8 @@
 
 A Zephyr RTOS port of Espressif's
 [network provisioning](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/provisioning.html)
-protocol for **Wi-Fi over Bluetooth LE, SoftAP or the device console**.
+protocol for **Wi-Fi or Thread provisioning over Bluetooth LE, SoftAP or the
+device console**.
 
 It speaks the same protocomm wire protocol as ESP-IDF, so the **stock Espressif
 provisioning apps work out of the box** — no app changes, no custom client:
@@ -21,10 +22,11 @@ Wi-Fi credentials are stored through Zephyr's **native `wifi_credentials`
 subsystem**, and the connection is driven through the standard `net_mgmt` Wi-Fi
 management API.
 
-> Scope: Wi-Fi only (Thread is intentionally out of scope), BLE, SoftAP and
-> console transports, security schemes **0** (plaintext) and **1**
-> (Curve25519 + AES-256-CTR + proof-of-possession). Security 2 (SRP6a) is not
-> implemented.
+> Scope: **Wi-Fi or Thread** provisioning — mutually exclusive per build, like
+> upstream (the `CONFIG_NETWORK_PROV_NETWORK_TYPE` choice) — over BLE, SoftAP
+> (Wi-Fi only) and console transports, security schemes **0** (plaintext) and
+> **1** (Curve25519 + AES-256-CTR + proof-of-possession). Thread network scan
+> and security 2 (SRP6a) are not implemented.
 
 ## How it maps to ESP-IDF
 
@@ -38,6 +40,7 @@ management API.
 | security1 crypto (mbedTLS)        | PSA Crypto: X25519 ECDH, AES-256-CTR, SHA-256              |
 | Wi-Fi credentials in NVS          | `wifi_credentials` subsystem (settings backend)            |
 | `esp_wifi` connect/scan           | `net_mgmt` (`NET_REQUEST_WIFI_CONNECT` / `_SCAN`)          |
+| `esp_openthread` (Thread)         | OpenThread (`CONFIG_NET_L2_OPENTHREAD`, `otDatasetSetActiveTlvs`) |
 | `wifi_prov_mgr_*` API             | `network_prov_mgr_*` API (`network_provisioning/...`)      |
 | `network_prov_scheme_*` objects   | `network_prov_scheme_ble/softap/console` (`scheme_*.h`)    |
 
@@ -106,8 +109,10 @@ status only once.
 
 The `.proto` files under [`proto/`](proto/) are taken verbatim from ESP-IDF
 (protocomm) and the `network_provisioning` component, so field numbering — and
-therefore the wire format — is identical. `sec2.proto` and the Thread messages
-are trimmed for scope but Wi-Fi/sec0/sec1 field numbers are unchanged. See
+therefore the wire format — is identical. The same `prov-config`/`prov-ctrl`
+endpoints carry the Wi-Fi or Thread message types depending on the build's
+network type; `prov-scan` is Wi-Fi only so far (Thread scan pending). `sec2.proto`
+is trimmed for scope but sec0/sec1 field numbers are unchanged. See
 [`proto/README.md`](proto/README.md) for the endpoint ↔ message map and the
 nanopb `.options` conventions.
 

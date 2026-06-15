@@ -1,0 +1,16 @@
+tests:
+  network_provisioning.thread_config:
+    # OpenThread needs a real 802.15.4 radio (native_sim has none), so this is a
+    # compile/link integration check on a Thread-capable board. A full
+    # BabbleSim attach E2E is a follow-up.
+    build_only: true
+    modules:
+      - nanopb
+      - openthread
+    tags:
+      - network_provisioning
+      - thread
+    platform_allow:
+      - nrf52840dk/nrf52840
+    integration_platforms:
+      - nrf52840dk/nrf52840
