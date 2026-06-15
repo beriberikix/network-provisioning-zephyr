@@ -357,11 +357,9 @@ int network_prov_mgr_endpoint_unregister(const char *ep_name)
 	return 0;
 }
 
-/* Network-type capability list advertised in the proto-ver JSON. Wi-Fi exposes
- * scan; Thread does not (prov-scan is not implemented for Thread yet).
- */
+/* Network-type capability list advertised in the proto-ver JSON. */
 #if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
-#define PROV_CAPS "\"thread_prov\""
+#define PROV_CAPS "\"thread_prov\",\"thread_scan\""
 #else
 #define PROV_CAPS "\"wifi_prov\",\"wifi_scan\""
 #endif
@@ -406,6 +404,14 @@ static int net_endpoints_init(struct protocomm *pc)
 	}
 	ret = protocomm_add_endpoint(pc, EP_CTRL, network_prov_wifi_ctrl_handler, NULL);
 #elif defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	ret = network_prov_thread_scan_init();
+	if (ret) {
+		return ret;
+	}
+	ret = protocomm_add_endpoint(pc, EP_SCAN, network_prov_thread_scan_handler, NULL);
+	if (ret) {
+		return ret;
+	}
 	ret = network_prov_thread_config_init();
 	if (ret) {
 		return ret;
@@ -425,6 +431,7 @@ static void net_endpoints_deinit(void)
 	network_prov_wifi_scan_deinit();
 	network_prov_wifi_config_deinit();
 #elif defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	network_prov_thread_scan_deinit();
 	network_prov_thread_config_deinit();
 #endif
 }

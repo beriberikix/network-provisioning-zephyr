@@ -100,6 +100,14 @@ int network_prov_thread_config_handler(void *priv, const uint8_t *inbuf, size_t 
 int network_prov_thread_ctrl_handler(void *priv, const uint8_t *inbuf, size_t inlen,
 				     uint8_t **outbuf, size_t *outlen);
 
+/** Initialise the Thread scan handler (resets the discovery result buffer). */
+int network_prov_thread_scan_init(void);
+/** Tear down the Thread scan handler. */
+void network_prov_thread_scan_deinit(void);
+/** protocomm handler for the prov-scan endpoint (Thread NetworkScanPayload). */
+int network_prov_thread_scan_handler(void *priv, const uint8_t *inbuf, size_t inlen,
+				     uint8_t **outbuf, size_t *outlen);
+
 /*
  * Transport back-ends. Each is fronted by a network_prov_scheme vtable; the
  * start() call registers the protocomm endpoints with the transport and brings

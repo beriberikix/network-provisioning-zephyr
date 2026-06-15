@@ -78,6 +78,7 @@ if(CONFIG_NETWORK_PROV_CORE)
       zephyr_library_sources(
         src/thread_config_handler.c
         src/thread_ctrl_handler.c
+        src/thread_scan_handler.c
       )
     endif()
   endif()

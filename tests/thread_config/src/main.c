@@ -25,6 +25,7 @@
 #include <pb_encode.h>
 #include <pb_decode.h>
 #include "network_config.pb.h"
+#include "network_scan.pb.h"
 
 #include "network_provisioning/network_prov_mgr.h"
 #include "network_provisioning/scheme_console.h"
@@ -163,6 +164,74 @@ ZTEST(thread_config, test_set_apply_status)
 	network_prov_thread_config_reset();
 	network_prov_thread_config_deinit();
 	network_prov_mgr_deinit();
+}
+
+/* Encode a NetworkScanPayload, run the Thread scan handler, decode the response
+ * into @p resp. Returns the handler's return code.
+ */
+static int run_scan_handler(const NetworkScanPayload *req, NetworkScanPayload *resp)
+{
+	uint8_t buf[64];
+	pb_ostream_t os = pb_ostream_from_buffer(buf, sizeof(buf));
+
+	zassert_true(pb_encode(&os, NetworkScanPayload_fields, req),
+		     "encode failed: %s", PB_GET_ERROR(&os));
+
+	uint8_t *out = NULL;
+	size_t outlen = 0;
+	int ret = network_prov_thread_scan_handler(NULL, buf, os.bytes_written,
+						   &out, &outlen);
+
+	if (ret != 0) {
+		return ret;
+	}
+
+	pb_istream_t is = pb_istream_from_buffer(out, outlen);
+
+	zassert_true(pb_decode(&is, NetworkScanPayload_fields, resp),
+		     "decode failed: %s", PB_GET_ERROR(&is));
+	k_free(out);
+	return 0;
+}
+
+ZTEST(thread_config, test_scan_start_status_result)
+{
+	zassert_equal(network_prov_thread_scan_init(), 0, "scan init failed");
+
+	NetworkScanPayload req = NetworkScanPayload_init_default;
+	NetworkScanPayload resp = NetworkScanPayload_init_default;
+
+	/* Non-blocking start so the handler returns without waiting on the sweep
+	 * (which a lone node can't complete without a network).
+	 */
+	req.msg = NetworkScanMsgType_TypeCmdScanThreadStart;
+	req.which_payload = NetworkScanPayload_cmd_scan_thread_start_tag;
+	req.payload.cmd_scan_thread_start.blocking = false;
+
+	zassert_equal(run_scan_handler(&req, &resp), 0, "scan start failed");
+	zassert_equal(resp.msg, NetworkScanMsgType_TypeRespScanThreadStart, "start resp type");
+
+	/* Status: decodes and reports a count within bounds. */
+	req = (NetworkScanPayload)NetworkScanPayload_init_default;
+	resp = (NetworkScanPayload)NetworkScanPayload_init_default;
+	req.msg = NetworkScanMsgType_TypeCmdScanThreadStatus;
+	req.which_payload = NetworkScanPayload_cmd_scan_thread_status_tag;
+
+	zassert_equal(run_scan_handler(&req, &resp), 0, "scan status failed");
+	zassert_equal(resp.msg, NetworkScanMsgType_TypeRespScanThreadStatus, "status resp type");
+
+	/* Result: first page decodes. */
+	req = (NetworkScanPayload)NetworkScanPayload_init_default;
+	resp = (NetworkScanPayload)NetworkScanPayload_init_default;
+	req.msg = NetworkScanMsgType_TypeCmdScanThreadResult;
+	req.which_payload = NetworkScanPayload_cmd_scan_thread_result_tag;
+	req.payload.cmd_scan_thread_result.start_index = 0;
+	req.payload.cmd_scan_thread_result.count = 4;
+
+	zassert_equal(run_scan_handler(&req, &resp), 0, "scan result failed");
+	zassert_equal(resp.msg, NetworkScanMsgType_TypeRespScanThreadResult, "result resp type");
+
+	network_prov_thread_scan_deinit();
 }
 
 ZTEST_SUITE(thread_config, NULL, NULL, NULL, NULL, NULL);
