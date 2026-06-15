@@ -25,8 +25,8 @@ management API.
 > Scope: **Wi-Fi or Thread** provisioning — mutually exclusive per build, like
 > upstream (the `CONFIG_NETWORK_PROV_NETWORK_TYPE` choice) — over BLE, SoftAP
 > (Wi-Fi only) and console transports, security schemes **0** (plaintext) and
-> **1** (Curve25519 + AES-256-CTR + proof-of-possession). Thread network scan
-> and security 2 (SRP6a) are not implemented.
+> **1** (Curve25519 + AES-256-CTR + proof-of-possession). Security 2 (SRP6a) is
+> not implemented.
 
 ## How it maps to ESP-IDF
 
@@ -109,10 +109,10 @@ status only once.
 
 The `.proto` files under [`proto/`](proto/) are taken verbatim from ESP-IDF
 (protocomm) and the `network_provisioning` component, so field numbering — and
-therefore the wire format — is identical. The same `prov-config`/`prov-ctrl`
-endpoints carry the Wi-Fi or Thread message types depending on the build's
-network type; `prov-scan` is Wi-Fi only so far (Thread scan pending). `sec2.proto`
-is trimmed for scope but sec0/sec1 field numbers are unchanged. See
+therefore the wire format — is identical. The same `prov-config`/`prov-scan`/
+`prov-ctrl` endpoints carry the Wi-Fi or Thread message types depending on the
+build's network type (`prov-scan` does an `otThreadDiscover` sweep for Thread).
+`sec2.proto` is trimmed for scope but sec0/sec1 field numbers are unchanged. See
 [`proto/README.md`](proto/README.md) for the endpoint ↔ message map and the
 nanopb `.options` conventions.
 

@@ -41,7 +41,8 @@ transport is exercised with one real handshake/encryption implementation.
 A compile/link integration check for the Thread network type
 (`CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD`): the real manager + the Thread
 prov-config handler driven through OpenThread (`otDatasetSetActiveTlvs` and the
-Set → Apply → GetStatus path). OpenThread needs a real 802.15.4 radio, which
+Set → Apply → GetStatus path) plus the prov-scan handler (`otThreadDiscover`
+Start → Status → Result). OpenThread needs a real 802.15.4 radio, which
 `native_sim` lacks, so this is **build_only on `nrf52840dk/nrf52840`**; a full
 BabbleSim attach E2E (à la `ble_e2e`) is a follow-up.
 
