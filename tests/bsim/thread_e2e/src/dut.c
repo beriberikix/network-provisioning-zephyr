@@ -75,6 +75,11 @@ static void dut_attach_main(void)
 	otError err;
 
 	dut_init_mgr();
+	/* Initialise the config handler (registers the OpenThread state-changed
+	 * callback and the attach-timeout work) — start_provisioning would do this
+	 * via net_endpoints_init(), but this test drives the handler directly.
+	 */
+	TEST_ASSERT(network_prov_thread_config_init() == 0, "thread config init failed");
 
 	openthread_mutex_lock();
 	err = otDatasetCreateNewNetwork(openthread_get_default_instance(), &ds);
