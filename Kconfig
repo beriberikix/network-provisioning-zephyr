@@ -50,12 +50,14 @@ config NETWORK_PROV_CONSOLE
 	  hex request/response lines between esp_prov and the device by hand.
 
 menuconfig NETWORK_PROV_MGR
-	bool "Network provisioning manager (Wi-Fi provisioning)"
+	bool "Network provisioning manager (Wi-Fi or Thread provisioning)"
 	# Depend on (rather than select) heavy subsystems: selecting symbols that
 	# carry their own dependencies (Wi-Fi, storage) triggers Kconfig
 	# recursive-dependency errors. The application enables these — and one of
-	# the transports above — see the samples' prj.conf files.
-	depends on WIFI && WIFI_CREDENTIALS
+	# the transports above — see the samples' prj.conf files. The network type
+	# (Wi-Fi or Thread) is the NETWORK_PROV_NETWORK_TYPE choice below; this
+	# manager needs the prerequisites of at least one of them.
+	depends on (WIFI && WIFI_CREDENTIALS) || NET_L2_OPENTHREAD
 	depends on MBEDTLS
 	depends on SETTINGS
 	depends on NANOPB
@@ -63,15 +65,44 @@ menuconfig NETWORK_PROV_MGR
 	select EXPERIMENTAL
 	help
 	  Espressif-compatible network provisioning service. Lets the stock ESP
-	  provisioning apps (Android/iOS) configure the device's Wi-Fi
-	  credentials over a secure protocomm session carried on BLE GATT
-	  (NETWORK_PROV_BLE) or HTTP over a device-hosted access point
-	  (NETWORK_PROV_SOFTAP). Enable at least one transport.
+	  provisioning apps (Android/iOS) configure the device's Wi-Fi credentials
+	  or Thread dataset over a secure protocomm session carried on BLE GATT
+	  (NETWORK_PROV_BLE), HTTP over a device-hosted access point
+	  (NETWORK_PROV_SOFTAP) or the console (NETWORK_PROV_CONSOLE). Enable at
+	  least one transport and pick the network type below.
 
 	  Wi-Fi credentials are stored through the native wifi_credentials
-	  subsystem. Requires PSA Crypto (mbedTLS) for security scheme 1.
+	  subsystem; a Thread dataset persists through OpenThread's own store.
+	  Requires PSA Crypto (mbedTLS) for security scheme 1.
 
 if NETWORK_PROV_MGR
+
+choice NETWORK_PROV_NETWORK_TYPE
+	prompt "Provisioned network type"
+	default NETWORK_PROV_NETWORK_TYPE_WIFI
+	help
+	  Which network the device provisions. Mirrors upstream Espressif's
+	  mutually-exclusive NETWORK_PROV_NETWORK_TYPE choice: a build provisions
+	  Wi-Fi or Thread, not both. The protocol core and transports are shared;
+	  only the prov-config/prov-scan/prov-ctrl endpoint handlers differ.
+
+config NETWORK_PROV_NETWORK_TYPE_WIFI
+	bool "Wi-Fi"
+	depends on WIFI && WIFI_CREDENTIALS
+	help
+	  Provision Wi-Fi credentials (SSID/passphrase) via the wifi_credentials
+	  store and the net_mgmt Wi-Fi connect/scan APIs.
+
+config NETWORK_PROV_NETWORK_TYPE_THREAD
+	bool "Thread"
+	depends on NET_L2_OPENTHREAD
+	help
+	  Provision a Thread network: receive the Active Operational Dataset and
+	  apply it via OpenThread (otDatasetSetActiveTlvs), then report the attach
+	  state. The dataset persists through OpenThread's own settings store. On
+	  device Thread network scan (otThreadDiscover) is not yet implemented.
+
+endchoice
 
 config NETWORK_PROV_SCAN_MAX_ENTRIES
 	int "Maximum number of Wi-Fi scan entries cached"

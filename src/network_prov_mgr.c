@@ -7,7 +7,9 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_WIFI)
 #include <zephyr/net/wifi_credentials.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -148,7 +150,11 @@ int network_prov_mgr_is_provisioned(bool *provisioned)
 	if (provisioned == NULL) {
 		return -EINVAL;
 	}
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	*provisioned = network_prov_thread_is_commissioned();
+#else
 	*provisioned = !wifi_credentials_is_empty();
+#endif
 	return 0;
 }
 
@@ -158,6 +164,12 @@ int network_prov_mgr_reset_wifi_provisioning(void)
 		return -EPERM;
 	}
 
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	/* Thread build: erase the persisted Operational Dataset. (Symbol name
+	 * kept for API stability across network types.)
+	 */
+	return network_prov_thread_config_erase();
+#else
 	int ret = wifi_credentials_delete_all();
 
 	if (ret != 0) {
@@ -166,6 +178,7 @@ int network_prov_mgr_reset_wifi_provisioning(void)
 	}
 	LOG_INF("Stored Wi-Fi credentials erased");
 	return 0;
+#endif
 }
 
 /* Reject characters that would break out of a JSON string literal, so the
@@ -344,6 +357,15 @@ int network_prov_mgr_endpoint_unregister(const char *ep_name)
 	return 0;
 }
 
+/* Network-type capability list advertised in the proto-ver JSON. Wi-Fi exposes
+ * scan; Thread does not (prov-scan is not implemented for Thread yet).
+ */
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+#define PROV_CAPS "\"thread_prov\""
+#else
+#define PROV_CAPS "\"wifi_prov\",\"wifi_scan\""
+#endif
+
 static void build_version_json(enum network_prov_security security, const char *pop)
 {
 	int sec_ver = (security == NETWORK_PROV_SECURITY_1) ? 1 : 0;
@@ -352,8 +374,59 @@ static void build_version_json(enum network_prov_security security, const char *
 
 	snprintf(mgr.version_json, sizeof(mgr.version_json),
 		 "{%s\"prov\":{\"ver\":\"v1.1\",\"sec_ver\":%d,"
-		 "\"cap\":[\"wifi_prov\",\"wifi_scan\"%s]}}",
+		 "\"cap\":[" PROV_CAPS "%s]}}",
 		 mgr.app_info_json, sec_ver, no_pop ? ",\"no_pop\"" : "");
+}
+
+/* Register the network-type-specific endpoints (config/scan/ctrl) on @p pc.
+ * Wi-Fi and Thread share the prov-config/prov-ctrl endpoint names; only one
+ * network type is built in (NETWORK_PROV_NETWORK_TYPE choice). Returns 0 or
+ * -errno; on error the caller unwinds via net_endpoints_deinit().
+ */
+static int net_endpoints_init(struct protocomm *pc)
+{
+	int ret;
+
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_WIFI)
+	ret = network_prov_wifi_scan_init();
+	if (ret) {
+		return ret;
+	}
+	ret = protocomm_add_endpoint(pc, EP_SCAN, network_prov_wifi_scan_handler, NULL);
+	if (ret) {
+		return ret;
+	}
+	ret = network_prov_wifi_config_init(mgr.wifi_conn_attempts);
+	if (ret) {
+		return ret;
+	}
+	ret = protocomm_add_endpoint(pc, EP_CONFIG, network_prov_wifi_config_handler, NULL);
+	if (ret) {
+		return ret;
+	}
+	ret = protocomm_add_endpoint(pc, EP_CTRL, network_prov_wifi_ctrl_handler, NULL);
+#elif defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	ret = network_prov_thread_config_init();
+	if (ret) {
+		return ret;
+	}
+	ret = protocomm_add_endpoint(pc, EP_CONFIG, network_prov_thread_config_handler, NULL);
+	if (ret) {
+		return ret;
+	}
+	ret = protocomm_add_endpoint(pc, EP_CTRL, network_prov_thread_ctrl_handler, NULL);
+#endif
+	return ret;
+}
+
+static void net_endpoints_deinit(void)
+{
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_WIFI)
+	network_prov_wifi_scan_deinit();
+	network_prov_wifi_config_deinit();
+#elif defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	network_prov_thread_config_deinit();
+#endif
 }
 
 int network_prov_mgr_start_provisioning(enum network_prov_security security,
@@ -390,28 +463,7 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 		goto err;
 	}
 
-	ret = network_prov_wifi_scan_init();
-	if (ret) {
-		goto err;
-	}
-	ret = protocomm_add_endpoint(mgr.pc, EP_SCAN,
-				     network_prov_wifi_scan_handler, NULL);
-	if (ret) {
-		goto err;
-	}
-
-	ret = network_prov_wifi_config_init(mgr.wifi_conn_attempts);
-	if (ret) {
-		goto err;
-	}
-	ret = protocomm_add_endpoint(mgr.pc, EP_CONFIG,
-				     network_prov_wifi_config_handler, NULL);
-	if (ret) {
-		goto err;
-	}
-
-	ret = protocomm_add_endpoint(mgr.pc, EP_CTRL,
-				     network_prov_wifi_ctrl_handler, NULL);
+	ret = net_endpoints_init(mgr.pc);
 	if (ret) {
 		goto err;
 	}
@@ -442,8 +494,7 @@ int network_prov_mgr_start_provisioning(enum network_prov_security security,
 	return 0;
 
 err:
-	network_prov_wifi_scan_deinit();
-	network_prov_wifi_config_deinit();
+	net_endpoints_deinit();
 	protocomm_delete(mgr.pc);
 	mgr.pc = NULL;
 	return ret;
@@ -455,8 +506,7 @@ static void do_teardown(void)
 		return;
 	}
 	mgr.scheme->stop();
-	network_prov_wifi_scan_deinit();
-	network_prov_wifi_config_deinit();
+	net_endpoints_deinit();
 	protocomm_delete(mgr.pc);
 	mgr.pc = NULL;
 	mgr.started = false;
@@ -505,12 +555,24 @@ bool network_prov_mgr_is_sm_idle(void)
 	return !mgr.started;
 }
 
+/* The state-reset wrappers apply to either network type's connection/attach
+ * state machine.
+ */
+static void net_config_reset(void)
+{
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD)
+	network_prov_thread_config_reset();
+#else
+	network_prov_wifi_config_reset();
+#endif
+}
+
 int network_prov_mgr_reset_wifi_sm_state_on_failure(void)
 {
 	if (!mgr.started) {
 		return -EPERM;
 	}
-	network_prov_wifi_config_reset();
+	net_config_reset();
 	return 0;
 }
 
@@ -519,7 +581,7 @@ int network_prov_mgr_reset_wifi_sm_state_for_reprovision(void)
 	if (!mgr.started) {
 		return -EPERM;
 	}
-	network_prov_wifi_config_reset();
+	net_config_reset();
 	return 0;
 }
 
@@ -528,6 +590,7 @@ int network_prov_mgr_configure_wifi_sta(const char *ssid, const char *psk)
 	if (!mgr.started) {
 		return -EPERM;
 	}
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_WIFI)
 	if (ssid == NULL || ssid[0] == '\0') {
 		return -EINVAL;
 	}
@@ -535,6 +598,12 @@ int network_prov_mgr_configure_wifi_sta(const char *ssid, const char *psk)
 		(const uint8_t *)ssid, strlen(ssid),
 		(const uint8_t *)(psk != NULL ? psk : ""),
 		psk != NULL ? strlen(psk) : 0);
+#else
+	/* Wi-Fi-specific; a Thread build provisions a dataset instead. */
+	ARG_UNUSED(ssid);
+	ARG_UNUSED(psk);
+	return -ENOTSUP;
+#endif
 }
 
 int network_prov_mgr_get_wifi_remaining_conn_attempts(uint32_t *attempts_remaining)
@@ -542,8 +611,13 @@ int network_prov_mgr_get_wifi_remaining_conn_attempts(uint32_t *attempts_remaini
 	if (attempts_remaining == NULL || !mgr.started) {
 		return -EINVAL;
 	}
+#if defined(CONFIG_NETWORK_PROV_NETWORK_TYPE_WIFI)
 	*attempts_remaining = network_prov_wifi_config_remaining_attempts();
 	return 0;
+#else
+	/* Thread attaches on a timeout, not a retry budget. */
+	return -ENOTSUP;
+#endif
 }
 
 void network_prov_mgr_wait(void)

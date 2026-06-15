@@ -36,6 +36,20 @@ client-side security-1 implementation in
 `src/security1.c`, doing what `esp_prov`'s security1 client does — so each
 transport is exercised with one real handshake/encryption implementation.
 
+## Thread config build (`tests/thread_config`)
+
+A compile/link integration check for the Thread network type
+(`CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD`): the real manager + the Thread
+prov-config handler driven through OpenThread (`otDatasetSetActiveTlvs` and the
+Set → Apply → GetStatus path). OpenThread needs a real 802.15.4 radio, which
+`native_sim` lacks, so this is **build_only on `nrf52840dk/nrf52840`**; a full
+BabbleSim attach E2E (à la `ble_e2e`) is a follow-up.
+
+```sh
+west twister -T network-provisioning-zephyr/tests/thread_config \
+    -p nrf52840dk/nrf52840 --build-only
+```
+
 ## BabbleSim BLE end-to-end (`tests/bsim/ble_e2e`)
 
 A two-device simulation over a virtual radio: a Zephyr "tester" central drives a

@@ -4,6 +4,7 @@ CmdSetWifiConfig.ssid          max_size:33
 CmdSetWifiConfig.passphrase    max_size:64
 CmdSetWifiConfig.bssid         max_size:6
 
-# Thread field unused by this Wi-Fi-only port but kept so the .proto matches
-# upstream wire numbering; bound it small to limit footprint.
-CmdSetThreadConfig.dataset     max_size:1
+# Thread Active Operational Dataset, carried as raw TLVs
+# (OT_OPERATIONAL_DATASET_MAX_LENGTH = 254). Used by the Thread provisioning
+# build (CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD).
+CmdSetThreadConfig.dataset     max_size:254

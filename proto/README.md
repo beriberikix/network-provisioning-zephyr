@@ -13,11 +13,14 @@ these files at compile time.
 
 ## Scope
 
-Wi-Fi only. `sec2.proto` (SRP6a, security scheme 2) is intentionally omitted and
-the Thread messages in `network_*` are unused — this port implements security
-schemes **0** (plaintext) and **1** (Curve25519 + AES-256-CTR + optional
-proof-of-possession). The sec0/sec1 and Wi-Fi field numbers are unchanged from
-upstream, so trimming scope does not affect compatibility.
+Wi-Fi **and** Thread provisioning (selected per build via
+`CONFIG_NETWORK_PROV_NETWORK_TYPE`, mutually exclusive like upstream). The Thread
+config/ctrl messages are wired to OpenThread; Thread scan
+(`*ScanThread*`) is defined but not yet implemented on the device. `sec2.proto`
+(SRP6a, security scheme 2) is intentionally omitted — this port implements
+security schemes **0** (plaintext) and **1** (Curve25519 + AES-256-CTR +
+optional proof-of-possession). All field numbers are unchanged from upstream, so
+the wire format stays compatible.
 
 ## File ↔ endpoint map
 
