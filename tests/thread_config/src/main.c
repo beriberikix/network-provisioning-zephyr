@@ -3,11 +3,12 @@
  * with OpenThread, then drive the handler's Set -> Apply -> GetStatus path and
  * assert the dataset is accepted, committed, and reported.
  *
- * Runs the real manager (Thread network type) + OpenThread on native_sim's
- * virtual 802.15.4 radio. The handler is invoked directly (the manager is
- * init'd so its event/semaphore plumbing is live, but no transport is started).
- * Assertions stay on the deterministic apply/commit path — a live radio attach
- * is not required.
+ * Runs the real manager (Thread network type) + OpenThread on a Thread-capable
+ * board (built for nrf52840dk; native_sim has no 802.15.4 radio, so this is
+ * build_only — see testcase.yaml). The handler is invoked directly: the manager
+ * is init'd so its event/semaphore plumbing is live, but no transport is
+ * started. Assertions stay on the deterministic apply/commit path — a live
+ * radio attach is not required.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

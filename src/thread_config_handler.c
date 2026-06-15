@@ -14,6 +14,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <string.h>
 #include <errno.h>
 
@@ -45,7 +46,12 @@ static struct {
 
 	ThreadNetworkState state;            /* reported wire state */
 	ThreadAttachFailedReason fail_reason;
-	bool applied;                        /* apply issued, attach pending */
+	/* 1 while an apply is in flight and its terminal outcome is still
+	 * unclaimed. The attach callback (OT thread) and the timeout (system
+	 * workqueue) race to claim it; atomic_cas() guarantees exactly one wins,
+	 * so a success is never dropped by a near-simultaneous timeout.
+	 */
+	atomic_t pending;
 
 	struct openthread_state_changed_callback ot_cb;
 	bool cb_registered;
@@ -58,33 +64,32 @@ static bool role_is_attached(otDeviceRole role)
 	       role == OT_DEVICE_ROLE_LEADER;
 }
 
-/* Attach succeeded: reported once, cancels the timeout. Runs from the
- * OpenThread state-change callback (OT thread context).
+/* Attach succeeded. Claims the pending outcome (no-op if the timeout already
+ * did) so exactly one of success/failure is reported. Runs from the OpenThread
+ * state-change callback (OT thread context).
  */
 static void on_attached(void)
 {
-	if (!tc.applied || tc.state == ThreadNetworkState_Attached) {
+	if (!atomic_cas(&tc.pending, 1, 0)) {
 		return;
 	}
 	tc.state = ThreadNetworkState_Attached;
-	tc.applied = false;
 	(void)k_work_cancel_delayable(&tc.attach_timeout);
 	LOG_INF("Thread attached");
 	network_prov_emit_event(NETWORK_PROV_CRED_SUCCESS, NULL);
 }
 
 /* No attach within the grace window: report failure (mirrors the Wi-Fi
- * final_failure path). The public reason enum is Wi-Fi-named; map "network not
- * found" onto it.
+ * final_failure path), unless the attach callback already claimed success. The
+ * public reason enum is Wi-Fi-named; map "network not found" onto it.
  */
 static void attach_timeout_fn(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
-	if (!tc.applied) {
+	if (!atomic_cas(&tc.pending, 1, 0)) {
 		return;
 	}
-	tc.applied = false;
 	tc.state = ThreadNetworkState_AttachingFailed;
 	tc.fail_reason = ThreadAttachFailedReason_ThreadNetworkNotFound;
 	LOG_WRN("Thread attach timed out");
@@ -139,7 +144,7 @@ void network_prov_thread_config_reset(void)
 {
 	(void)k_work_cancel_delayable(&tc.attach_timeout);
 	tc.dataset_staged = false;
-	tc.applied = false;
+	atomic_set(&tc.pending, 0);
 	tc.state = ThreadNetworkState_Dettached;
 	memset(&tc.dataset, 0, sizeof(tc.dataset));
 
@@ -154,7 +159,7 @@ int network_prov_thread_config_erase(void)
 
 	(void)k_work_cancel_delayable(&tc.attach_timeout);
 	tc.dataset_staged = false;
-	tc.applied = false;
+	atomic_set(&tc.pending, 0);
 	tc.state = ThreadNetworkState_Dettached;
 
 	openthread_mutex_lock();
@@ -205,7 +210,10 @@ static Status do_apply_config(void)
 		tc.state = ThreadNetworkState_AttachingFailed;
 		tc.fail_reason = ThreadAttachFailedReason_DatasetInvalid;
 
-		enum network_prov_cred_fail_reason reason = NETWORK_PROV_WIFI_NETWORK_NOT_FOUND;
+		/* A bad/rejected dataset is a config error, not "network not
+		 * found"; map it onto the generic auth/config failure reason.
+		 */
+		enum network_prov_cred_fail_reason reason = NETWORK_PROV_WIFI_AUTH_ERROR;
 
 		network_prov_emit_event(NETWORK_PROV_CRED_RECV, NULL);
 		network_prov_emit_event(NETWORK_PROV_CRED_FAIL, &reason);
@@ -217,7 +225,7 @@ static Status do_apply_config(void)
 
 	network_prov_emit_event(NETWORK_PROV_CRED_RECV, NULL);
 	tc.state = ThreadNetworkState_Attaching;
-	tc.applied = true;
+	atomic_set(&tc.pending, 1);
 
 	/* Already attached (e.g. re-apply of the same network)? Report now. */
 	openthread_mutex_lock();
@@ -271,6 +279,7 @@ static void fill_attached_state(ThreadAttachState *out)
 	const char *name = otThreadGetNetworkName(inst);
 
 	strncpy(out->name, name, sizeof(out->name) - 1);
+	out->name[sizeof(out->name) - 1] = '\0'; /* strncpy may not NUL-terminate */
 	openthread_mutex_unlock();
 }
 
