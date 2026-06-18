@@ -150,8 +150,20 @@ jobs:
         include:
           - board: esp32s3_devkitc/esp32s3/procpu
             toolchain: xtensa-espressif_esp32s3_zephyr-elf
+            blobs: hal_espressif
           - board: esp32c3_devkitm
             toolchain: riscv64-zephyr-elf
+            blobs: hal_espressif
+          # Raspberry Pi Pico 2W (CYW43439). Wi-Fi-only under Zephyr — no BLE
+          # HCI and no concurrent SoftAP+STA — so the console transport is the
+          # only one that runs there. Standalone combination (a sample + board
+          # neither cross-product axis contains), so it does not multiply with
+          # the ESP boards.
+          - sample: wifi_prov_console
+            board: rpi_pico2/rp2350a/m33/w
+            toolchain: arm-zephyr-eabi
+            blobs: hal_infineon
+            apply_airoc_patch: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -174,11 +186,11 @@ jobs:
         # (west packages pip --install refuses to run outside a virtualenv.)
         run: pip install grpcio-tools==1.68.0
 
-      - name: Fetch Espressif binary blobs (Wi-Fi/BLE firmware)
+      - name: Fetch vendor binary blobs (Wi-Fi/BLE firmware)
         # The blob host occasionally returns transient 5xx errors; retry.
         run: |
           n=0
-          until west blobs fetch hal_espressif; do
+          until west blobs fetch ${{ matrix.blobs }}; do
             n=$((n + 1))
             if [ "$n" -ge 5 ]; then
               echo "blob fetch still failing after $n attempts"; exit 1
@@ -186,6 +198,21 @@ jobs:
             echo "transient blob fetch error; retry $n after backoff"
             sleep $((n * 10))
           done
+
+      - name: Apply Zephyr AIROC log.h include fix (Pico 2W)
+        # Upstream Zephyr v4.4.x bug: the AIROC SPI HAL files use the logging
+        # macros without including <zephyr/logging/log.h>, so the Pico 2W Wi-Fi
+        # build fails. Applied idempotently; see ci/patches/README.md. Remove
+        # once the fix is in the Zephyr revision pinned by west.yml.
+        if: matrix.apply_airoc_patch == 'true'
+        run: |
+          patch="$GITHUB_WORKSPACE/network-provisioning-zephyr/ci/patches/0001-drivers-wifi-airoc-add-missing-log.h-include.patch"
+          cd "$(west topdir)/zephyr"
+          if git apply --reverse --check "$patch" 2>/dev/null; then
+            echo "AIROC patch already present; skipping"
+          else
+            git apply "$patch"
+          fi
 
       - name: Build sample
         run: |
