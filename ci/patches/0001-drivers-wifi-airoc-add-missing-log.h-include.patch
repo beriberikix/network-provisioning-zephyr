@@ -1,0 +1,26 @@
+diff --git a/drivers/wifi/infineon/airoc_whd_hal_common.c b/drivers/wifi/infineon/airoc_whd_hal_common.c
+index 5a2387ba0ef..ebf678a5762 100644
+--- a/drivers/wifi/infineon/airoc_whd_hal_common.c
++++ b/drivers/wifi/infineon/airoc_whd_hal_common.c
+@@ -11,6 +11,8 @@
+ #include <zephyr/kernel.h>
+ #include <zephyr/drivers/gpio.h>
+ 
++#include <zephyr/logging/log.h>
++
+ LOG_MODULE_DECLARE(infineon_airoc_wifi, CONFIG_WIFI_LOG_LEVEL);
+ 
+ #ifdef __cplusplus
+diff --git a/drivers/wifi/infineon/airoc_whd_hal_spi.c b/drivers/wifi/infineon/airoc_whd_hal_spi.c
+index d5a631a0f1d..f1165537ced 100644
+--- a/drivers/wifi/infineon/airoc_whd_hal_spi.c
++++ b/drivers/wifi/infineon/airoc_whd_hal_spi.c
+@@ -12,6 +12,8 @@
+ #include <whd_wifi_api.h>
+ #include <zephyr/drivers/spi.h>
+ 
++#include <zephyr/logging/log.h>
++
+ LOG_MODULE_DECLARE(infineon_airoc_wifi, CONFIG_WIFI_LOG_LEVEL);
+ 
+ #ifdef __cplusplus

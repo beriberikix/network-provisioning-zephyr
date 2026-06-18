@@ -1,0 +1,20 @@
+sample:
+  name: Wi-Fi Provisioning over the Console
+  description: >
+    Provision Wi-Fi credentials over the device console (shell) using a secure
+    protocomm session, for boards with Wi-Fi but no usable BLE/SoftAP transport
+    under Zephyr (e.g. the Raspberry Pi Pico 2W). Speaks the transport
+    "esp_prov --transport console" uses, backed by Zephyr's native
+    wifi_credentials store.
+tests:
+  sample.net.wifi_prov_console:
+    platform_allow:
+      - native_sim
+      - rpi_pico2/rp2350a/m33/w
+    integration_platforms:
+      - native_sim
+    tags:
+      - wifi
+      - provisioning
+      - console
+    build_only: true

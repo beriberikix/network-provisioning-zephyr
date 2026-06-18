@@ -1,0 +1,16 @@
+/*
+ * Raspberry Pi Pico 2W board overlay for wifi_prov_console.
+ *
+ * Carve a storage partition out of the 4 MB flash for the wifi_credentials
+ * settings/NVS backend. The base rpi_pico2 board defines no flash partitions,
+ * so without this the FLASH_MAP/NVS storage has nowhere to live. This is the
+ * standard Raspberry Pi 4 MB layout (1 MB code, 3 MB storage), the same
+ * include the seeed/xiao_rp2350 board uses.
+ *
+ * The console/shell run over SEGGER RTT (see the board .conf) so no UART or
+ * USB wiring is needed beyond the SWD debug probe.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <raspberrypi/partitions_4M_storage.dtsi>
