@@ -43,7 +43,7 @@ Requirements
 ************
 
 * A board with Wi-Fi STA and a serial console. Validated on
-  ``rpi_pico2/rp2350a/m33/w`` (note the ``/w`` wireless variant); also builds
+  ``rpi_pico2/rp2350a/m33_0/w`` (note the ``/w`` wireless variant); also builds
   on ``native_sim``.
 * The ``esp_prov.py`` CLI from
   ``idf-extra-components/network_provisioning/tool/esp_prov``.
@@ -56,8 +56,8 @@ Building and Running
 
 On the Pico 2W, build as usual; the included board files add the flash storage
 partition the credential store needs
-(``boards/rpi_pico2_rp2350a_m33_w.overlay``) and route the console/shell over
-**SEGGER RTT** (``boards/rpi_pico2_rp2350a_m33_w.conf``). RTT is read back over
+(``boards/rpi_pico2_rp2350a_m33_0_w.overlay``) and route the console/shell over
+**SEGGER RTT** (``boards/rpi_pico2_rp2350a_m33_0_w.conf``). RTT is read back over
 the same SWD debug probe used to flash, so no UART wiring or USB cable is
 required. (The board's USB-CDC console path is avoided here: the Zephyr
 USB-device-next stack hits an iterable-section init fault on this target.)
@@ -65,7 +65,7 @@ USB-device-next stack hits an iterable-section init fault on this target.)
 .. code-block:: console
 
    west blobs fetch hal_infineon
-   west build -b rpi_pico2/rp2350a/m33/w \
+   west build -b rpi_pico2/rp2350a/m33_0/w \
        network-provisioning-zephyr/samples/wifi_prov_console
    west flash               # openocd/cmsis-dap runner (Raspberry Pi Debug Probe)
 
