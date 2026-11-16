@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/ztest.h>
+#include <pb_encode.h>
+
+#include "session.pb.h"
 
 #include "protocomm.h"
 #include "security.h"
@@ -196,6 +199,85 @@ ZTEST(security1, test_malformed_handshake_rejected)
 	zassert_not_equal(protocomm_req_handle(pc, DATA_EP, enc, sizeof(enc),
 					       &out, &outlen), 0,
 			  "data must be rejected without a completed handshake");
+	if (out != NULL) {
+		k_free(out);
+	}
+
+	protocomm_close_session(pc);
+	protocomm_delete(pc);
+}
+
+ZTEST(security1, test_repeated_command0_restarts_handshake)
+{
+	struct protocomm *pc = make_pc(POP);
+
+	/* Repeat the full handshake on one transport session, without the
+	 * protocomm_open_session() a reconnect would do. Each Command0 must
+	 * restart the handshake (upstream parity) and release the previous
+	 * session key: iterating past the PSA key-slot count would exhaust
+	 * the slots if a key leaked per attempt.
+	 */
+	for (int i = 0; i < 40; i++) {
+		struct prov_client c;
+
+		prov_client_init(&c, pc_xport, pc);
+		zassert_equal(prov_client_handshake(&c, POP), 0,
+			      "handshake %d on the same session failed", i);
+		encrypted_echo(pc, &c, "same session");
+		prov_client_destroy(&c);
+	}
+
+	protocomm_close_session(pc);
+	protocomm_delete(pc);
+}
+
+ZTEST(security1, test_rehandshake_after_wrong_pop)
+{
+	struct protocomm *pc = make_pc(POP);
+	struct prov_client bad;
+	struct prov_client good;
+
+	/* A failed attempt (wrong PoP) leaves the session in CMD0_DONE; a
+	 * retry on the same session must still be able to succeed.
+	 */
+	prov_client_init(&bad, pc_xport, pc);
+	zassert_equal(prov_client_handshake(&bad, "not-the-pop"), -EACCES);
+	prov_client_destroy(&bad);
+
+	prov_client_init(&good, pc_xport, pc);
+	zassert_equal(prov_client_handshake(&good, POP), 0,
+		      "retry after wrong PoP failed");
+	encrypted_echo(pc, &good, "recovered");
+	prov_client_destroy(&good);
+
+	protocomm_close_session(pc);
+	protocomm_delete(pc);
+}
+
+ZTEST(security1, test_command0_with_mismatched_payload_rejected)
+{
+	struct protocomm *pc = make_pc(POP);
+
+	/* msg says Command0 but the payload union carries sc1. */
+	SessionData cmd = SessionData_init_default;
+
+	cmd.sec_ver = SecSchemeVersion_SecScheme1;
+	cmd.which_proto = SessionData_sec1_tag;
+	cmd.proto.sec1.msg = Sec1MsgType_Session_Command0;
+	cmd.proto.sec1.which_payload = Sec1Payload_sc1_tag;
+	cmd.proto.sec1.payload.sc1.client_verify_data.size = 32;
+
+	uint8_t buf[128];
+	pb_ostream_t os = pb_ostream_from_buffer(buf, sizeof(buf));
+
+	zassert_true(pb_encode(&os, SessionData_fields, &cmd));
+
+	uint8_t *out = NULL;
+	size_t outlen = 0;
+
+	zassert_not_equal(protocomm_req_handle(pc, "prov-session", buf, os.bytes_written,
+					       &out, &outlen), 0,
+			  "Command0 with an sc1 payload must be rejected");
 	if (out != NULL) {
 		k_free(out);
 	}

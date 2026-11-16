@@ -10,7 +10,7 @@ tests:
   sample.net.wifi_prov_console:
     platform_allow:
       - native_sim
-      - rpi_pico2/rp2350a/m33/w
+      - rpi_pico2/rp2350a/m33_0/w
     integration_platforms:
       - native_sim
     tags:

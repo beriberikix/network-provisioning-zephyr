@@ -196,9 +196,10 @@ static void connect_work_fn(struct k_work *work)
 
 /* --- wifi_mgmt operations ------------------------------------------------- */
 
-static int fake_scan(const struct device *dev, struct wifi_scan_params *params,
-		     scan_result_cb_t cb)
+static int fake_scan(const struct device *dev, struct net_if *iface,
+		     struct wifi_scan_params *params, scan_result_cb_t cb)
 {
+	ARG_UNUSED(iface);
 	ARG_UNUSED(params);
 	struct fake_wifi_data *d = dev->data;
 
@@ -207,9 +208,10 @@ static int fake_scan(const struct device *dev, struct wifi_scan_params *params,
 	return 0;
 }
 
-static int fake_connect(const struct device *dev,
+static int fake_connect(const struct device *dev, struct net_if *iface,
 			struct wifi_connect_req_params *params)
 {
+	ARG_UNUSED(iface);
 	struct fake_wifi_data *d = dev->data;
 
 	if (d->next_sync_err != 0) {
@@ -231,8 +233,9 @@ static int fake_connect(const struct device *dev,
 	return 0;
 }
 
-static int fake_disconnect(const struct device *dev)
+static int fake_disconnect(const struct device *dev, struct net_if *iface)
 {
+	ARG_UNUSED(iface);
 	struct fake_wifi_data *d = dev->data;
 
 	d->connected = false;
@@ -240,23 +243,26 @@ static int fake_disconnect(const struct device *dev)
 	return 0;
 }
 
-static int fake_ap_enable(const struct device *dev,
+static int fake_ap_enable(const struct device *dev, struct net_if *iface,
 			  struct wifi_connect_req_params *params)
 {
+	ARG_UNUSED(iface);
 	ARG_UNUSED(dev);
 	ARG_UNUSED(params);
 	return 0;
 }
 
-static int fake_ap_disable(const struct device *dev)
+static int fake_ap_disable(const struct device *dev, struct net_if *iface)
 {
+	ARG_UNUSED(iface);
 	ARG_UNUSED(dev);
 	return 0;
 }
 
-static int fake_iface_status(const struct device *dev,
+static int fake_iface_status(const struct device *dev, struct net_if *iface,
 			     struct wifi_iface_status *status)
 {
+	ARG_UNUSED(iface);
 	struct fake_wifi_data *d = dev->data;
 
 	if (!d->connected) {
@@ -313,8 +319,10 @@ static void fake_iface_init(struct net_if *iface)
 	 */
 }
 
-static enum ethernet_hw_caps fake_get_caps(const struct device *dev)
+static enum ethernet_hw_caps fake_get_caps(const struct device *dev,
+					   struct net_if *iface)
 {
+	ARG_UNUSED(iface);
 	ARG_UNUSED(dev);
 	return 0;
 }

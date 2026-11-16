@@ -5,7 +5,20 @@
 config NETWORK_PROV_CORE
 	bool "Network provisioning protocol core (protocomm + security schemes)"
 	depends on NANOPB
-	depends on MBEDTLS
+	depends on PSA_CRYPTO
+	# Security 1 primitives: X25519 ECDH, AES-256-CTR, SHA-256 (PoP).
+	# Selected rather than left to prj.conf: when another subsystem owns the
+	# Mbed TLS configuration (e.g. OpenThread's default security config sets
+	# MBEDTLS_PROMPTLESS), plain PSA_WANT_* assignments are silently ignored
+	# and the handshake fails at runtime with PSA_ERROR_NOT_SUPPORTED.
+	select PSA_WANT_ALG_ECDH
+	select PSA_WANT_ECC_MONTGOMERY_255
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_EXPORT
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_DERIVE
+	select PSA_WANT_ALG_CTR
+	select PSA_WANT_KEY_TYPE_AES
+	select PSA_WANT_ALG_SHA_256
 	help
 	  Transport-agnostic protocomm engine, the protobuf wire format and the
 	  security schemes 0/1. Has no Bluetooth, Wi-Fi or storage dependencies,
@@ -58,7 +71,7 @@ menuconfig NETWORK_PROV_MGR
 	# (Wi-Fi or Thread) is the NETWORK_PROV_NETWORK_TYPE choice below; this
 	# manager needs the prerequisites of at least one of them.
 	depends on (WIFI && WIFI_CREDENTIALS) || NET_L2_OPENTHREAD
-	depends on MBEDTLS
+	depends on PSA_CRYPTO
 	depends on SETTINGS
 	depends on NANOPB
 	select NETWORK_PROV_CORE

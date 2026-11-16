@@ -304,9 +304,9 @@ release.
 Add this repo to your `west.yml` and enable `CONFIG_NETWORK_PROV_MGR=y` plus
 at least one transport: `CONFIG_NETWORK_PROV_BLE=y`, `CONFIG_NETWORK_PROV_SOFTAP=y`
 and/or `CONFIG_NETWORK_PROV_CONSOLE=y`. The required Zephyr subsystems (`WIFI`,
-`MBEDTLS`, `NANOPB`, `WIFI_CREDENTIALS`, `SETTINGS`, and per transport
-`BT_PERIPHERAL` + a large ATT MTU, `HTTP_SERVER` + `NET_DHCPV4_SERVER`, or
-`SHELL`) are
+`PSA_CRYPTO` + `MBEDTLS`, `NANOPB`, `WIFI_CREDENTIALS`, `SETTINGS`, and per
+transport `BT_PERIPHERAL` + a large ATT MTU, `HTTP_SERVER` + `NET_DHCPV4_SERVER`,
+or `SHELL`) are
 set up in the samples' `prj.conf` files — copy the relevant lines from
 [`wifi_prov_ble`](samples/wifi_prov_ble/prj.conf) or
 [`wifi_prov_softap`](samples/wifi_prov_softap/prj.conf).

@@ -259,9 +259,39 @@ static int build_resp1(struct sec1_ctx *ctx, const uint8_t *device_verify,
 	return network_prov_pb_encode(SessionData_fields, &resp, outbuf, outlen);
 }
 
+/**
+ * @brief Drop any session-key state from an earlier Command0 so the handshake
+ *        can restart on the same transport session.
+ *
+ * A client may resend Command0 (a retry, or a fresh handshake without a
+ * reconnect). Upstream protocomm restarts the session in that case; without
+ * this reset the previous AES key slot and cipher operation would leak on
+ * every repeat, eventually exhausting PSA key slots.
+ */
+static void sec1_reset_session(struct sec1_ctx *ctx)
+{
+	psa_cipher_abort(&ctx->cipher);
+	ctx->cipher = psa_cipher_operation_init();
+	if (ctx->session_key != PSA_KEY_ID_NULL) {
+		psa_destroy_key(ctx->session_key);
+		ctx->session_key = PSA_KEY_ID_NULL;
+	}
+	memset(ctx->client_pubkey, 0, sizeof(ctx->client_pubkey));
+	memset(ctx->device_random, 0, sizeof(ctx->device_random));
+	ctx->state = SEC1_INIT;
+}
+
 static int handle_cmd0(struct sec1_ctx *ctx, const Sec1Payload *p,
 		       uint8_t **outbuf, size_t *outlen)
 {
+	if (ctx->state != SEC1_INIT) {
+		LOG_WRN("sec1: command0 in state %d, restarting handshake", ctx->state);
+		sec1_reset_session(ctx);
+	}
+	if (p->which_payload != Sec1Payload_sc0_tag) {
+		LOG_ERR("sec1: command0 without sc0 payload");
+		return -EINVAL;
+	}
 	if (p->payload.sc0.client_pubkey.size != PUBKEY_LEN) {
 		LOG_ERR("sec1: bad client_pubkey length");
 		return -EINVAL;
@@ -291,7 +321,8 @@ static int handle_cmd1(struct sec1_ctx *ctx, const Sec1Payload *p,
 		LOG_ERR("sec1: command1 before command0");
 		return -EACCES;
 	}
-	if (p->payload.sc1.client_verify_data.size != PUBKEY_LEN) {
+	if (p->which_payload != Sec1Payload_sc1_tag ||
+	    p->payload.sc1.client_verify_data.size != PUBKEY_LEN) {
 		return -EINVAL;
 	}
 
