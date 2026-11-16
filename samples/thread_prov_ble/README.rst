@@ -27,7 +27,7 @@ Requirements
   multiprotocol). Validated on ``nrf52840dk/nrf52840``.
 * One of the Espressif provisioning apps, or the ``esp_prov.py`` CLI from
   ``idf-extra-components/network_provisioning/tool/esp_prov``, driven with
-  ``--network thread`` and a dataset.
+  ``--dataset_tlvs`` and a dataset.
 
 Building and Running
 ********************
@@ -47,7 +47,7 @@ Supply the Thread dataset TLVs (hex) the device should join:
 
    python esp_prov.py --transport ble --service_name PROV_ZEPHYR \
        --sec_ver 1 --pop abcd1234 \
-       --network thread --dataset <operational-dataset-tlvs-hex>
+       --dataset_tlvs <operational-dataset-tlvs-hex>
 
 Configuration
 *************
