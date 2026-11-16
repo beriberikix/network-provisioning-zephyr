@@ -163,7 +163,6 @@ jobs:
             board: rpi_pico2/rp2350a/m33/w
             toolchain: arm-zephyr-eabi
             blobs: hal_infineon
-            apply_airoc_patch: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -198,21 +197,6 @@ jobs:
             echo "transient blob fetch error; retry $n after backoff"
             sleep $((n * 10))
           done
-
-      - name: Apply Zephyr AIROC log.h include fix (Pico 2W)
-        # Upstream Zephyr v4.4.x bug: the AIROC SPI HAL files use the logging
-        # macros without including <zephyr/logging/log.h>, so the Pico 2W Wi-Fi
-        # build fails. Applied idempotently; see ci/patches/README.md. Remove
-        # once the fix is in the Zephyr revision pinned by west.yml.
-        if: matrix.apply_airoc_patch == 'true'
-        run: |
-          patch="$GITHUB_WORKSPACE/network-provisioning-zephyr/ci/patches/0001-drivers-wifi-airoc-add-missing-log.h-include.patch"
-          cd "$(west topdir)/zephyr"
-          if git apply --reverse --check "$patch" 2>/dev/null; then
-            echo "AIROC patch already present; skipping"
-          else
-            git apply "$patch"
-          fi
 
       - name: Build sample
         run: |

@@ -84,7 +84,7 @@ jobs:
 
       - name: Build sample
         id: build
-        # Informational: a board that overflows flash or lacks a v4.4.1 driver
+        # Informational: a board that overflows flash or lacks a driver in the pinned Zephyr
         # must not fail the workflow. The real result is captured below.
         continue-on-error: true
         run: |
