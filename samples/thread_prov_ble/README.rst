@@ -17,14 +17,22 @@ a headless Thread device onto the mesh.
 
 This is the Thread counterpart of :ref:`wifi_prov_ble_sample`; the protocol,
 transport and security are identical — only the provisioned network differs
-(``CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD``). Thread network scan is not yet
-implemented, so the commissioner must supply the dataset directly.
+(``CONFIG_NETWORK_PROV_NETWORK_TYPE_THREAD``). The commissioner supplies the
+dataset directly; ``prov-scan`` can list nearby Thread networks
+(``otThreadDiscover``) to help pick one.
 
 Requirements
 ************
 
-* A board with both Bluetooth LE and an IEEE 802.15.4 radio (BLE + Thread
-  multiprotocol). Validated on ``nrf52840dk/nrf52840``.
+* A board with both Bluetooth LE and an IEEE 802.15.4 radio, plus radio
+  arbitration between them. The provisioning app stays connected over BLE while
+  the device attaches to Thread, so both protocols use the radio at once.
+* On Nordic SoCs, that arbitration comes from the **nRF Connect SDK**: the
+  Multiprotocol Service Layer (MPSL) and the SoftDevice Controller, prebuilt
+  libraries under Nordic's license. Upstream Zephyr's open-source BLE controller
+  cannot share the radio. The sample still builds there, with a CMake warning,
+  but the controller asserts as soon as Thread starts. Validated on
+  ``nrf52840dk/nrf52840`` with NCS v3.4.2.
 * One of the Espressif provisioning apps, or the ``esp_prov.py`` CLI from
   ``idf-extra-components/network_provisioning/tool/esp_prov``, driven with
   ``--dataset_tlvs`` and a dataset.
@@ -32,11 +40,30 @@ Requirements
 Building and Running
 ********************
 
+Create an NCS workspace from this repository's ``west-ncs.yml``. It imports
+NCS v3.4.2 trimmed to the projects this build needs:
+
 .. code-block:: console
 
+   west init -m https://github.com/beriberikix/network-provisioning-zephyr \
+       --mf west-ncs.yml ncs-workspace
+   cd ncs-workspace && west update
    west build -b nrf52840dk/nrf52840 \
        network-provisioning-zephyr/samples/thread_prov_ble
    west flash
+
+To use an existing NCS workspace instead, add this repository to its manifest,
+or pass it as an extra module:
+``west build ... -- -DZEPHYR_EXTRA_MODULES=/path/to/network-provisioning-zephyr``.
+
+.. note::
+
+   Recent nRF52840 silicon locks the debug port (APPROTECT) at boot when UICR
+   is erased, for example after ``west flash --erase``. A J-Link that then
+   connects has to unlock the chip, which mass-erases it and wipes the
+   firmware and the stored dataset. If you need to halt or reset the device
+   with a debugger during testing, first open the port by writing ``0x5A`` to
+   ``UICR.APPROTECT`` (``0x10001208``).
 
 Provision with esp_prov.py
 ==========================

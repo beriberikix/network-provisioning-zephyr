@@ -233,3 +233,47 @@ jobs:
           west twister --build-only --inline-logs -v -p nrf52840dk/nrf52840 \
             -T network-provisioning-zephyr/samples/thread_prov_ble \
             -T network-provisioning-zephyr/tests/thread_config
+
+  thread-ncs:
+    # The upstream build above only checks compilation: at runtime, upstream
+    # Zephyr's BLE controller cannot share the nRF radio with 802.15.4. The
+    # supported Thread-over-BLE configuration on Nordic is the nRF Connect SDK
+    # (MPSL + SoftDevice Controller), which pins an older Zephyr base, so
+    # build-check the module against it too.
+    name: Thread build (NCS, nrf52840dk)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: network-provisioning-zephyr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up NCS workspace, SDK and toolchain
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: network-provisioning-zephyr
+          manifest-file-name: west-ncs.yml
+          toolchains: arm-zephyr-eabi
+          ccache-cache-key: ncs
+
+      - name: Install nanopb generator dependencies
+        run: pip install grpcio-tools==1.68.0
+
+      - name: Build the Thread sample
+        run: |
+          set -o pipefail
+          west build -b nrf52840dk/nrf52840 \
+            network-provisioning-zephyr/samples/thread_prov_ble 2>&1 | tee build.log
+          # Must resolve to the MPSL + SoftDevice Controller configuration.
+          cfg=build/thread_prov_ble/zephyr/.config
+          grep -q '^CONFIG_BT_LL_SOFTDEVICE=y' "$cfg"
+          grep -q '^CONFIG_MPSL=y' "$cfg"
+          grep -q '^CONFIG_NRF_802154_MULTIPROTOCOL_SUPPORT=y' "$cfg"
+          if grep -q 'network_provisioning: Thread provisioning over BLE' build.log; then
+            echo "unexpected radio-sharing warning on NCS"; exit 1
+          fi
