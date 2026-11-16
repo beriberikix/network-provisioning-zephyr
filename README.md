@@ -28,6 +28,13 @@ management API.
 > **1** (Curve25519 + AES-256-CTR + proof-of-possession). Security 2 (SRP6a) is
 > not implemented.
 
+> **Thread over BLE on Nordic SoCs needs the nRF Connect SDK.** The app stays
+> connected over BLE while the device attaches to Thread, and only NCS (MPSL +
+> SoftDevice Controller) can share the nRF radio between the two. Build with
+> [`west-ncs.yml`](west-ncs.yml); see the
+> [`thread_prov_ble`](samples/thread_prov_ble/README.rst) sample. Wi-Fi builds
+> and the other transports use upstream Zephyr ([`west.yml`](west.yml)).
+
 ## How it maps to ESP-IDF
 
 | ESP-IDF building block            | Zephyr-native replacement                                  |
@@ -323,6 +330,7 @@ Most field issues are subsystem sizing, not protocol bugs. The samples'
 
 | Symptom | Cause / fix |
 | ------- | ----------- |
+| nRF Thread build faults with a BT controller assert (`lll_conn.c`) right after "Thread dataset received, attaching..." | Upstream Zephyr's BLE controller can't share the radio with 802.15.4; the build prints a CMake warning about this. Build with the nRF Connect SDK (`west-ncs.yml`), which uses MPSL and the SoftDevice Controller. |
 | BLE controller wedges, or no response once the app connects (security 1) | `CONFIG_BT_RX_STACK_SIZE` too small. The sec1 handshake runs PSA crypto on the Bluetooth host RX thread; the default 1.2 kB stack overflows. Set **≥ 4096**. |
 | SoftAP app reports **"Null input buffer"** | `CONFIG_ZVFS_POLL_MAX` too small. The HTTP server polls `1 eventfd + 1 listener + MAX_CLIENTS` sockets at once; a too-small budget fails `zsock_poll()` with `ENOMEM` and the extra client gets an empty body. Set **≥ `2 + CONFIG_HTTP_SERVER_MAX_CLIENTS`**. |
 | SoftAP HTTP server never starts / silently restart-loops | `CONFIG_ZVFS_EVENTFD_MAX` too small. The DHCPv4 server and the HTTP server each need one eventfd. Set **≥ 2**. |

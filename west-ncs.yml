@@ -1,0 +1,49 @@
+# West manifest for building this module on the nRF Connect SDK (NCS).
+#
+#   west init -m https://github.com/beriberikix/network-provisioning-zephyr \
+#       --mf west-ncs.yml ncs-workspace
+#   cd ncs-workspace && west update
+#
+# Use it for Thread provisioning over BLE on Nordic SoCs. The nRF52840's single
+# radio has to be time-shared between Bluetooth LE and IEEE 802.15.4, and only
+# NCS ships the arbitration for that: the Multiprotocol Service Layer (MPSL)
+# and the SoftDevice Controller, both prebuilt libraries under Nordic's
+# license. Upstream Zephyr's open-source BLE controller (west.yml) cannot share
+# the radio. It trips a controller assert as soon as Thread starts while the
+# provisioning app is still connected.
+#
+# NCS pins its own Zephyr fork. v3.4.2 is based on Zephyr v4.4.2, an older
+# base than west.yml's upstream Zephyr pin.
+manifest:
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+
+  projects:
+    - name: nrf
+      remote: ncs
+      repo-path: sdk-nrf
+      revision: v3.4.2
+      import:
+        # Only what a Thread + BLE build on nRF52840 needs; the full NCS
+        # manifest is several GB.
+        name-allowlist:
+          - zephyr
+          - nrfxlib
+          - hal_nordic
+          - openthread
+          - mbedtls
+          - oberon-psa-crypto
+          - nanopb
+          - cmsis
+          - cmsis_6
+          - segger
+          - picolibc
+          - zcbor
+          - mcuboot
+          - trusted-firmware-m
+          - tf-m-tests
+          - psa-arch-tests
+
+  self:
+    path: network-provisioning-zephyr

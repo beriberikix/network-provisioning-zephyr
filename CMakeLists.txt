@@ -80,6 +80,22 @@ if(CONFIG_NETWORK_PROV_CORE)
         src/thread_ctrl_handler.c
         src/thread_scan_handler.c
       )
+
+      # Thread over BLE keeps the provisioning app connected while Thread
+      # attaches (and while prov-scan sweeps 802.15.4), so both protocols need
+      # the one nRF radio at once. Upstream Zephyr's BLE controller has no
+      # radio arbitration and asserts as soon as the 802.15.4 driver takes the
+      # radio. NCS provides the arbitration (MPSL + SoftDevice Controller).
+      if(CONFIG_NETWORK_PROV_BLE AND CONFIG_BT_LL_SW_SPLIT AND CONFIG_IEEE802154_NRF5
+         AND NOT CONFIG_SOC_SERIES_BSIM_NRFXX)
+        message(WARNING
+          "network_provisioning: Thread provisioning over BLE with Zephyr's "
+          "open-source BLE controller (BT_LL_SW_SPLIT) and the nRF 802.15.4 "
+          "radio driver crashes at runtime: the controller cannot share the "
+          "radio once Thread starts. Build with the nRF Connect SDK "
+          "(west-ncs.yml), which provides MPSL radio arbitration and the "
+          "SoftDevice Controller.")
+      endif()
     endif()
   endif()
 endif()
